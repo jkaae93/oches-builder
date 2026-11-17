@@ -35,7 +35,10 @@ final class RawJSONKeyValidatorTests: XCTestCase {
     }
 
     func testUniqueNestedKeysAndDistinctUnicodeSequences() throws {
-        try check(Data(#"{"a":{"x":1},"b":{"x":2},"é":1,"e\u0301":2}"#.utf8))
+        try check(Data(#"{"a":{"x":1},"b":{"x":2}}"#.utf8))
+        XCTAssertThrowsError(try check(Data(#"{"é":1,"e\u0301":2}"#.utf8))) {
+            XCTAssertEqual($0 as? RawJSONValidationError, .unsupportedUnicodeKeyEquivalence)
+        }
     }
 
     func testRejectsDuplicateAndEscapedDuplicateAtAnyDepth() {

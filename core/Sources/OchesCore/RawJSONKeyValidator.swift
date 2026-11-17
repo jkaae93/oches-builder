@@ -5,6 +5,7 @@ public enum RawJSONValidationError: Error, Equatable {
     case duplicateKey
     case limitExceeded
     case unsafeNumber
+    case unsupportedUnicodeKeyEquivalence
 }
 
 /// Detects duplicate object keys before Foundation can discard them. This is not
@@ -72,10 +73,14 @@ private struct KeyScanner {
         whitespace()
         if take(0x7d) { return }
         var keys = Set<Data>()
+        var swiftKeys = Set<String>()
         repeat {
             whitespace()
             let key = try string()
             guard keys.insert(Data(key.utf8)).inserted else { throw RawJSONValidationError.duplicateKey }
+            // Swift String equality uses canonical Unicode equivalence. Until
+            // decoding preserves distinct keys, refuse inputs it would collapse.
+            guard swiftKeys.insert(key).inserted else { throw RawJSONValidationError.unsupportedUnicodeKeyEquivalence }
             whitespace()
             guard take(0x3a) else { throw RawJSONValidationError.invalidInput }
             try value(depth: depth)
