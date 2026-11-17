@@ -27,6 +27,12 @@ final class UnavailableWireBoundaryTests: XCTestCase {
         XCTAssertTrue(results.allSatisfy { $0 == .unavailable })
     }
 
+    func testErrorsUseFixedSafeCategories() {
+        XCTAssertEqual(UnavailableWireResult.invalidInput.safeError, SafeWireError(code: .invalidInput, detail: nil))
+        XCTAssertEqual(UnavailableWireResult.versionUnsupported.safeError, SafeWireError(code: .unsupported, detail: "VERSION_UNSUPPORTED"))
+        XCTAssertEqual(UnavailableWireResult.unavailable.safeError, SafeWireError(code: .unavailable, detail: nil))
+    }
+
     func testRejectsDuplicateAndUnsupportedVersion() {
         let boundary = UnavailableWireBoundary()
         let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
