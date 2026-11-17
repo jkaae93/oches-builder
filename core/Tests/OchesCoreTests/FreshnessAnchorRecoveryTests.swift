@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import XCTest
 @testable import OchesCore
 
@@ -151,5 +152,207 @@ final class FreshnessAnchorRecoveryTests: XCTestCase {
         if case .quarantined = coord.reconcileOnRestart() {} else {
             XCTFail("Expected quarantined when ledger - anchor > 1")
         }
+    }
+
+    func testOnlineBackupRestoreReplaysDeletionsRevocationsAndRotatesGeneration() throws {
+        let dbPath = tempDir.appendingPathComponent("live.db").path
+        let backupPath = tempDir.appendingPathComponent("backup.db").path
+        let restoredPath = tempDir.appendingPathComponent("restored.db").path
+        let ledgerDir = tempDir.appendingPathComponent("backup-ledger", isDirectory: true)
+        let blobFile = tempDir.appendingPathComponent("blob-1.bin")
+        try Data("immutable-artifact-content".utf8).write(to: blobFile)
+
+        let store = try SQLiteStore(path: dbPath, workspaceID: "ws-1", initialStoreGeneration: "gen-1")
+        let keyStore = ScopedProtectedKeyStore()
+        let ik = try keyStore.generateSigningKey(keyID: "ik-1")
+        let registry = try ClientIdentityAndKeyRegistry(store: store, keyStore: keyStore)
+        let enforcer = try AuthorizationEnforcer(store: store)
+        let anchor = LocalSealedFreshnessAnchor(workspaceID: "ws-1", epoch: 1, storeGeneration: "gen-1")
+        let ledger = try RecoveryLedger(ledgerDirectoryURL: ledgerDir, workspaceID: "ws-1")
+        let coord = try RecoveryCoordinator(store: store, anchor: anchor, ledger: ledger, keyStore: keyStore)
+        coord.registerIntentSigningKey(keyID: "ik-1", publicKeyBytes: ik.publicKeyBytes, active: true)
+        let delLifecycle = try DeletionRequestLifecycle(store: store)
+        let backupMgr = BackupAndRecoveryManager()
+
+        // Seed state, event, client, and unused approval before backup
+        let initRes = try store.commitTransition(TransitionRequest(
+            actorID: "user-1",
+            workspaceID: "ws-1",
+            operation: "doc.create",
+            requestID: "req-1",
+            objectID: "secret-doc-1",
+            ownerModule: "ARC-08",
+            expectedRevision: nil,
+            normalizedInput: .object([("k", .string("v"))]),
+            nextStateJSON: "{\"secret\":\"keep-before-delete\"}",
+            events: [NewEventRecord(eventID: "evt-1", sourceID: "core", kind: "doc.created", payloadJSON: "{}", observedAt: 1000)],
+            responseJSON: "{}",
+            nowEpochSeconds: 1000
+        ))
+        try registry.registerClient(RegisteredClientRecord(
+            clientID: "client-to-revoke",
+            signingKeyID: "ck-1",
+            signingPublicKeyBase64: "cHVi",
+            noiseKeyID: "nk-1",
+            noisePublicKeyBase64: "bm9pc2U=",
+            trustLevel: .userEnrolledKey,
+            teamID: "",
+            signingIdentifier: "ext.id",
+            allowedWorkspaces: ["ws-1"],
+            allowedScopes: ["workspace:read"],
+            status: .active,
+            policyVersion: 1,
+            createdAt: 1000,
+            expiresAt: 5000,
+            revokedAt: nil
+        ))
+        let rev0 = initRes.revision
+        try enforcer.recordApproval(ApprovalRecord(
+            approvalID: "unused-backup-approval",
+            kind: .execution,
+            subjectClientID: "client-to-revoke",
+            decidedByActorID: "user-1",
+            workspaceID: "ws-1",
+            normalizedTarget: "/tmp/ws",
+            allowedScopes: [.runRequest],
+            binding: ApprovalBinding(
+                runID: "r1",
+                taskRevision: rev0,
+                preparedAttemptID: "a1",
+                instanceRevision: rev0,
+                bindingDigest: "b1",
+                capabilitySnapshotID: "c1",
+                executionRequestDigest: "d1"
+            ),
+            policyVersion: 1,
+            issuedAt: 1000,
+            expiresAt: 5000,
+            status: .approved
+        ), decidedByTrustedUI: true)
+
+        // Take consistent online backup with blob digest
+        let manifest = try backupMgr.createOnlineBackup(
+            sourceStore: store,
+            backupDBPath: backupPath,
+            anchor: anchor,
+            blobs: [("blob-1", blobFile)]
+        )
+        XCTAssertEqual(manifest.storeGeneration, "gen-1")
+        XCTAssertEqual(manifest.sequence, 0)
+
+        // Incomplete deletion never reports COMPLETE and blocks target reads
+        _ = try delLifecycle.beginDeletion(requestID: "del-partial", targetID: "secret-doc-1")
+        XCTAssertTrue(try delLifecycle.isTargetBlockedForReads(targetID: "secret-doc-1"))
+        let failedDel = try delLifecycle.executeDeletion(
+            requestID: "del-partial",
+            targetID: "secret-doc-1",
+            derivedIndexDeleteSucceeds: false,
+            backupsDeleteSucceeds: true
+        )
+        XCTAssertEqual(failedDel.status, .failed)
+        XCTAssertTrue(try delLifecycle.isTargetBlockedForReads(targetID: "secret-doc-1"))
+
+        // Commit post-backup deletion & client revocation intents to RecoveryLedger + FreshnessAnchor
+        try coord.issueTrustedUIApproval(approvalID: "app-del", action: .deleteState, targetDigest: "sha256:doc1")
+        let pDel = try coord.commitIntentInDB(
+            intentID: "int-del",
+            approvalID: "app-del",
+            action: .deleteState,
+            targetID: "secret-doc-1",
+            targetDigest: "sha256:doc1",
+            nowEpochSeconds: 1100
+        )
+        let eDel = try coord.signAndAppendLedger(intent: pDel.intent, headDigest: pDel.headDigest, keyID: "ik-1")
+        _ = try coord.advanceAnchorAndComplete(eDel)
+
+        try coord.issueTrustedUIApproval(approvalID: "app-rev", action: .revokeClient, targetDigest: "sha256:client1")
+        let pRev = try coord.commitIntentInDB(
+            intentID: "int-rev",
+            approvalID: "app-rev",
+            action: .revokeClient,
+            targetID: "client-to-revoke",
+            targetDigest: "sha256:client1",
+            nowEpochSeconds: 1101
+        )
+        let eRev = try coord.signAndAppendLedger(intent: pRev.intent, headDigest: pRev.headDigest, keyID: "ik-1")
+        _ = try coord.advanceAnchorAndComplete(eRev)
+
+        // Corrupted/tampered blob fails restore
+        let badBlob = tempDir.appendingPathComponent("bad-blob.bin")
+        try Data("tampered".utf8).write(to: badBlob)
+        XCTAssertThrowsError(try backupMgr.restoreWorkspaceFromBackup(
+            backupDBPath: backupPath,
+            targetDBPath: restoredPath,
+            manifest: manifest,
+            coordinator: coord,
+            blobFilesByID: ["blob-1": badBlob],
+            newStoreGeneration: "gen-2",
+            restoreApprovalID: "app-restore",
+            intentSigningKeyID: "ik-1",
+            nowEpochSeconds: 1200
+        )) { error in
+            guard case .corrupt = error as? StorageError else {
+                return XCTFail("Expected corrupt error on tampered blob, got \(error)")
+            }
+        }
+
+        // Valid restore replays deletion & revocation, invalidates unused backup approvals,
+        // rotates storeGeneration, and rejects old-generation cursors/revisions with STALE_GENERATION
+        let restoredStore = try backupMgr.restoreWorkspaceFromBackup(
+            backupDBPath: backupPath,
+            targetDBPath: restoredPath,
+            manifest: manifest,
+            coordinator: coord,
+            blobFilesByID: ["blob-1": blobFile],
+            newStoreGeneration: "gen-2",
+            restoreApprovalID: "app-restore",
+            intentSigningKeyID: "ik-1",
+            nowEpochSeconds: 1201
+        )
+        XCTAssertEqual(restoredStore.storeGeneration, "gen-2")
+
+        // Deleted state is NOT resurrected
+        XCTAssertThrowsError(try restoredStore.readSnapshot(workspaceID: "ws-1", objectID: "secret-doc-1")) { error in
+            XCTAssertEqual(error as? StorageError, .notFound)
+        }
+
+        // Client revocation was replayed
+        let restoredRegistry = try ClientIdentityAndKeyRegistry(store: restoredStore, keyStore: keyStore)
+        let revokedClient = try restoredRegistry.fetchClient(clientID: "client-to-revoke")
+        XCTAssertEqual(revokedClient.status, .revoked)
+
+        // Old-generation cursor is rejected with STALE_GENERATION
+        let oldCursor = EventCursor(workspaceID: "ws-1", storeGeneration: "gen-1", sequence: 0)
+        XCTAssertThrowsError(try restoredStore.listEvents(workspaceID: "ws-1", after: oldCursor)) { error in
+            XCTAssertEqual(error as? StorageError, .staleGeneration)
+            XCTAssertEqual((error as? StorageError)?.safeWireError.detail, "STALE_GENERATION")
+        }
+
+        // Old-generation expectedRevision is rejected with STALE_GENERATION
+        XCTAssertThrowsError(try restoredStore.commitTransition(TransitionRequest(
+            actorID: "user-1",
+            workspaceID: "ws-1",
+            operation: "doc.update",
+            requestID: "req-stale",
+            objectID: "secret-doc-1",
+            ownerModule: "ARC-08",
+            expectedRevision: initRes.revision,
+            normalizedInput: .object([]),
+            nextStateJSON: "{}",
+            events: [],
+            responseJSON: "{}",
+            nowEpochSeconds: 1205
+        ))) { error in
+            XCTAssertEqual(error as? StorageError, .staleGeneration)
+        }
+
+        // Unused approval from backup was invalidated (REVOKED)
+        let approvalStatus = try restoredStore.withConnectionLock { _ -> String in
+            let stmt = try restoredStore.prepare("SELECT status FROM approvals WHERE approval_id = 'unused-backup-approval'")
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW else { return "" }
+            return restoredStore.columnText(stmt, index: 0)
+        }
+        XCTAssertEqual(approvalStatus, ApprovalStatus.revoked.rawValue)
     }
 }

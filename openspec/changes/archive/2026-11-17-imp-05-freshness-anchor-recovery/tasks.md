@@ -8,6 +8,6 @@
 
 ## 2. Deletion Lifecycle, Online Backup, Isolated Restore, and Ledger Replay (Sub-PR B)
 
-- [ ] 2.1 Implement `DeletionRequestLifecycle` (`PENDING -> DELETING -> COMPLETE | FAILED`), SQLite Online Backup API + blob manifest pinning, `restoreWorkspaceFromBackup` (integrity + FK check, post-snapshot deletion/revocation replay, `storeGeneration` rotation, `STALE_GENERATION`), and trusted UI quarantine release (`epoch + 1`).
-- [ ] 2.2 Add V-16/V-17/V-18 regression tests for post-backup deletion resurrection prevention, incomplete deletion access blocking, old-generation cursor/revision `STALE_GENERATION` rejection, and quarantine release.
-- [ ] 2.3 Sync `freshness-anchor-recovery` spec to `openspec/specs/` and archive `imp-05-freshness-anchor-recovery`.
+- [x] 2.1 Implement `DeletionRequestLifecycle` (`PENDING -> DELETING -> COMPLETE | FAILED`), SQLite Online Backup API + blob manifest pinning, `restoreWorkspaceFromBackup` (integrity + FK check, post-snapshot deletion/revocation replay, `storeGeneration` rotation, `STALE_GENERATION`), and trusted UI quarantine release (`epoch + 1`).
+- [x] 2.2 Add V-16/V-17/V-18 regression tests for post-backup deletion resurrection prevention, incomplete deletion access blocking, old-generation cursor/revision `STALE_GENERATION` rejection, and quarantine release.
+- [x] 2.3 Sync `freshness-anchor-recovery` spec to `openspec/specs/` and archive `imp-05-freshness-anchor-recovery`.
