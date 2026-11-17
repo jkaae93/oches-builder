@@ -20,5 +20,6 @@ final class AnalyzerExclusionsTests: XCTestCase {
             XCTAssertThrowsError(try AnalyzerExclusions.classify(relativePath: path), path)
         }
         XCTAssertThrowsError(try AnalyzerExclusions.classify(relativePath: "a", userExcludedPaths: ["../x"]))
+        XCTAssertThrowsError(try AnalyzerExclusions.classify(relativePath: "a", userExcludedPaths: ["a", "../x"]))
     }
 }

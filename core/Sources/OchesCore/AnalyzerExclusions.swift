@@ -26,7 +26,10 @@ struct AnalyzerExclusions {
             let components = rule.split(separator: "/", omittingEmptySubsequences: false)
             guard !rule.hasPrefix("/"), !rule.utf8.contains(0), !components.isEmpty,
                   components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { throw AnalyzerSafeRoot.AccessError.invalidPath }
-            let pathBytes = Array(relativePath.utf8), ruleBytes = Array(rule.utf8)
+        }
+        let pathBytes = Array(relativePath.utf8)
+        for rule in userExcludedPaths {
+            let ruleBytes = Array(rule.utf8)
             if pathBytes == ruleBytes || (pathBytes.starts(with: ruleBytes) && pathBytes.count > ruleBytes.count && pathBytes[ruleBytes.count] == 47) { return .userRule }
         }
         for part in parts {
