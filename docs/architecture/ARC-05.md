@@ -77,3 +77,5 @@ ARC-00 ADR-004 중립 스키마와 Adapter, ADR-005 공식 인증, ADR-011 복�
 
 ## 미결정 및 근거
 OS·최초 Provider·계정 식별 가능성·격리 방식·공식 GUI 연동 허용·capability 상세·로그인 취소 후 상태 확인·계정 삭제 정책은 미정이다. [Claude Code 인증](https://code.claude.com/docs/en/authentication), [Codex 인증](https://learn.chatgpt.com/docs/auth), [Antigravity 인증](https://antigravity.google/docs/install?tab=cli)은 공식 설명이지만 본 제품과의 연동 권한이나 격리 보장을 뜻하지 않는다. Antigravity 문서의 로컬 표면 간 인증 공유 설명은 계정 격리 검증의 필요성을 더한다. 실제 최신 문서, 약관, 사용 환경과 제공 버전별 기능은 실험 전 확인해야 한다.
+
+설계 확정(Final, 2026-11-17): 최초 범위 P12(Mock/Claude 1차/Codex 2차), 격리 R11, 비용 상태 E3. 공식 연동 허용·격리·삭제 정책 실증은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).

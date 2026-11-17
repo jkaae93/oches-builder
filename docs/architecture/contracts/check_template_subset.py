@@ -10,11 +10,11 @@ GRAPH_SCHEMA = {
     'type':'object', 'additionalProperties':False,
     'required':['schemaVersion','nodes','edges'],
     'properties': {
-        'schemaVersion':{'const':'1.0'},
-        'nodes':{'type':'array','minItems':1,'maxItems':128,'items':{
+        'schemaVersion':{'type':'object','additionalProperties':False,'required':['major','minor'],'properties':{'major':{'const':1},'minor':{'const':0}}},
+        'nodes':{'type':'array','minItems':1,'maxItems':1024,'items':{
             'type':'object','additionalProperties':False,'required':['id','kind','definition'],
             'properties':{'id':ID,'kind':{'const':'agent'},'definition':AGENT_SCHEMA, 'externalInputs':{'type':'array','uniqueItems':True,'maxItems':128,'items':ID}}}},
-        'edges':{'type':'array','maxItems':512,'items':{
+        'edges':{'type':'array','maxItems':4096,'items':{
             'type':'object','additionalProperties':False,'required':['from','to'],
             'properties':{'from':PORT_REF,'to':PORT_REF}}}
     }

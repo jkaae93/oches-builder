@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from check_agent_definition import check, decode
 
-BASE = {"schemaVersion":"1.0", "definitionId":"agent-1", "revision":1, "role":"worker", "instructions":"review", "inputs":[], "outputs":[], "tools":[], "permissions":[], "resourceLimits":{"maxDurationSeconds":60, "maxAttempts":1}}
+BASE = {"schemaVersion":{"major":1,"minor":0}, "definitionId":"agent-1", "revision":1, "role":"worker", "instructions":"review", "inputs":[], "outputs":[], "tools":[], "permissions":[], "resourceLimits":{"maxDurationSeconds":60, "maxAttempts":1}}
 
 class ContractTests(unittest.TestCase):
     def test_documented_example(self):
@@ -18,8 +18,10 @@ class ContractTests(unittest.TestCase):
     def test_rejections(self):
         mutations = [
             lambda x:x.pop('instructions'),
-            lambda x:x.update(schemaVersion='2.0'),
-            lambda x:x.update(schemaVersion='1.1'),
+            lambda x:x.update(schemaVersion={'major':2,'minor':0}),
+            lambda x:x.update(schemaVersion={'major':1,'minor':1}),
+            lambda x:x.update(schemaVersion='1.0'),
+            lambda x:x.update(schemaVersion={'major':1}),
             lambda x:x.update(credential='secret'),
             lambda x:x.update(role=' '),
             lambda x:x.update(revision=0),
@@ -39,7 +41,7 @@ class ContractTests(unittest.TestCase):
     def test_reject_nan(self):
         with self.assertRaises(ValueError): decode(b'{"x":NaN}')
     def test_reject_oversized(self):
-        with self.assertRaises(ValueError): decode(b' ' * 65537)
+        with self.assertRaises(ValueError): decode(b' ' * 262145)
     def test_reject_invalid_utf8(self):
         with self.assertRaises(UnicodeDecodeError): decode(b'\xff')
 

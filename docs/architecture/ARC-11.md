@@ -10,7 +10,7 @@ Core는 workspace의 정책·정본·실행 소유자이며 각 클라이언트�
 보안 모델은 관리자/root, 동일 OS 사용자로 임의 코드 실행이 가능한 악성 프로세스, 변조된 OS나 확장 자체의 완전한 장악을 방어한다고 주장하지 않는다. 동일 사용자 악성 프로세스는 가능한 한 peer identity·파일 보호·사용자 확인으로 방어하되 OS의 앱 신원 인증을 입증하지 못하면 해당 연결과 위험 작업을 비활성화한다. workspace 내용과 웹페이지, 설치된 다른 확장, 임의 로컬 사용자는 비신뢰다. 사용자 승인은 악성 클라이언트 식별을 대체하지 않는다.
 
 ## 2. 연결·등록·권한 계약
-- 사용자 채택된 ADR-016에 따라 macOS의 서명된 Desktop↔Core는 XPC를 우선 검증할 후보로 한다. Unix domain socket 또는 Windows named pipe는 OS별 추가 후보이며 세부 배포 및 지원은 미확정이다. OS 권한, peer credential과 실제 앱 신원 증명 지원을 OS별 검증한다. 단순 파일 권한, PID, Origin, Chrome extension ID 및 loopback은 클라이언트 인증에 충분하다고 간주하지 않는다. 네트워크 파일시스템, 원격 포워딩 및 localhost TCP는 지원하지 않는다.
+- 사용자 채택된 ADR-016에 따라 macOS의 서명된 Desktop↔Core는 XPC를 우선 검증할 후보로 한다. Unix domain socket 또는 Windows named pipe는 OS별 추가 후보이며 v1 범위 밖이다(P1·P9, 2026-11-17 확정). OS 권한, peer credential과 실제 앱 신원 증명 지원을 OS별 검증한다. 단순 파일 권한, PID, Origin, Chrome extension ID 및 loopback은 클라이언트 인증에 충분하다고 간주하지 않는다. 네트워크 파일시스템, 원격 포워딩 및 localhost TCP는 지원하지 않는다.
 - 최초 등록은 신뢰된 Desktop의 사용자 확인 화면에서 클라이언트 종류·식별자·workspace·권한을 명시한 단회 등록을 요구한다. Core는 검증 가능한 클라이언트 서명 공개키와 Noise static X25519 공개키를 등록하고 클라이언트는 개인키를 플랫폼 보안 저장소에서 생성·보관한다. 확장–Core 간 종단 기밀성과 무결성은 [종단 보안 채널 설계](EXTENSION_SECURE_CHANNEL.md) (`Noise_IK_25519_ChaChaPoly_SHA256`)를 따르며, 인증은 RFC 8785 JCS 정규화 및 SHA-256 digest 기반 서버 nonce·프로토콜·대상 Core ID를 포함한 서명 검증, 인증 상태의 검증된 연결 결부 및 Core 신원 검증을 요구한다. 등록 자체의 신원 확인이나 안전한 개인키 저장 조건이 충족되지 않으면 평문 fallback 없이 등록을 거부한다. 비밀을 명령행 인자·로그·웹뷰·웹페이지로 전달하지 않는다.
 - 등록 내역은 clientId, 공개키 지문, 설치 출처·검증 상태, OS 사용자, 허용 workspace·행위, 생성·만료·철회 시각, 인증 정책 버전을 갖는다. 공개키 보유만으로 앱 무결성을 증명하지 않는다. 신규 권한은 별도 사용자 확인, 만료·철회는 새 요청 즉시 거부, 키 교체는 기존 권한 회수 후 재등록한다. Core 재설치·신원 변경 시 클라이언트는 연결을 보류하고 사용자에게 다시 확인받는다. 감사 기록의 실패는 변경·실행 요청을 차단한다.
 - 권한은 `workspace:read`, `workspace:write`, `observation:raw:read`, `diagnostics:read`, `template:read`, `template:write`, `run:request`, `run:observe`, `run:cancel`, `context:submit`, `approval:decide` 등 명시적 범위로 구분하며 기본은 거부다. 등록된 범위, workspace, 작업별 정책, 유효한 사용자 승인과 실제 강제 가능성의 교집합만 허용한다. Extension이나 Content Script는 다른 클라이언트의 승인 화면을 사칭하거나 승인 자체를 발급할 수 없다. 보안 수준을 증명한 신뢰 UI만 `approval:decide`를 받는다. 위험 작업 실행 중 철회 시 추가 요청은 즉시 거부하고 ARC-06에 취소를 요청하되 실제 중단 확인 전 완료를 주장하지 않는다.
@@ -57,3 +57,7 @@ Chrome의 Native Messaging allowlist와 Chrome이 Host에 전달하는 caller or
 ## 설치별 키 인증 및 종단 채널 계약
 
 플랫폼 식별, 설치별 비대칭 키 소유 증명, Noise IK 종단 암호화 채널, Core 공통 인가는 서로 독립적으로 적용한다. 플랫폼별 키 보관, 최초 등록·교체·복구 및 미검증 경계는 [설치별 인증 설계](CLIENT_INSTALLATION_AUTH_DESIGN.md)와 [종단 보안 채널 설계](EXTENSION_SECURE_CHANNEL.md)를 따른다. 공유 비밀의 배포물 내 하드코딩과 키 저장 실패 시 평문 fallback은 금지한다. 이는 설계 기준의 확정이며 실제 제품 구현 및 플랫폼 실행 시험은 별도다.
+
+## 설계 동결 · 2026-11-17
+
+P1·P2·P11 확정. D01~D08·Noise IK·XPC 계약 유지. socket/pipe·원격·Windows/Linux는 v1 범위 밖. snapshot 일관성의 저장 엔진 실증은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).

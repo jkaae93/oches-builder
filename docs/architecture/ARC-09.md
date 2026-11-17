@@ -67,6 +67,8 @@ ARC-00 ADR-009, 010, 012와 관련한다. ARC-03 추천 평가, ARC-04 변경 �
 ## 미결정 사항
 위험 분류·승인 유효기간, 실제 Provider 및 OS의 집행 능력, 설계 검증용 평가 집합의 실제 fixture·검토, 운영 품질 합격치, 비용 자료의 공식 가용성.
 
+설계 확정(Final, 2026-11-17): E4·E5·E10·T3 확정. fixture 확보·집행 실증·비용 실측은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).
+
 ## 참고 근거
 [Anthropic 에이전트 평가](https://www.anthropic.com/research/demystifying-evals-for-ai-agents), 2026-01-09 발표, 2026-11-16 확인: 평가와 회귀 측정의 필요성을 설명한다. 본 문서의 승인 모델과 지표는 제품 설계 제안이다.
 

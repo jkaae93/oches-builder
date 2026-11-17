@@ -69,12 +69,14 @@ ARC-00 ADR-004, 005, 009, 012와 관련한다. ARC-03 승인 제안, ARC-05 Capa
 ## 미결정 사항
 아래 v0.2에서 중립 정의와 버전·손실 처리의 논리 계약을 제안한다. 실제 직렬화 스키마와 수치 상한, Provider별 형식·의미 등가성, 다중 파일 적용의 원자성 및 복구, 실제 적용 경로와 사용자 승인은 미결정이다.
 
+설계 확정(Final, 2026-11-17): S1·S2·S3·S4·S11 확정. Provider별 등가성 실증은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).
+
 ## 템플릿 시스템 영향 · 상위 설계
 Agent Definition과 Provider별 설정 변환은 이 모듈에 남는다. ARC-15는 버전별 Template Definition과 프로젝트 Instance를 관리하며 Runtime Binding은 인스턴스별 환경 참조로 구분한다. 템플릿 복제나 내보내기는 인증정보를 포함하거나 설정 적용 승인을 대체하지 않는다.
 
 ## 보완 계약 v0.2: 중립 정의와 Provider 변환
 
-다음은 최초 교환 모델 제안으로 운영 스키마 승인이나 특정 CLI 지원을 뜻하지 않는다. `AgentDefinition` v1의 필수 필드는 `schemaVersion`(major/minor), `definitionId`, `revision`, `role`(비어 있지 않은 문자열), `instructions`(신뢰되지 않은 작업 지시와 구분된 사용자 작성 지침), `inputs`/`outputs`(각각 유일한 `portId`, `type`, `required`), `tools`(유일한 capabilityId 목록), `permissions`(행위·대상 범위·승인 필요), `resourceLimits`(시간·시도 상한)다. Account·credential 값과 실제 실행 경로는 definition에 포함하지 않으며 인스턴스별 Runtime Binding에서 참조한다. 문자열 길이·포트 및 항목 수는 파서의 설정된 상한을 넘어서는 입력을 거부하고, 실제 수치는 보안 시험 전 확정하지 않는다.
+다음은 최초 교환 모델 제안으로 운영 스키마 승인이나 특정 CLI 지원을 뜻하지 않는다. `AgentDefinition` v1의 필수 필드는 `schemaVersion`(major/minor), `definitionId`, `revision`, `role`(비어 있지 않은 문자열), `instructions`(신뢰되지 않은 작업 지시와 구분된 사용자 작성 지침), `inputs`/`outputs`(각각 유일한 `portId`, `type`, `required`), `tools`(유일한 capabilityId 목록), `permissions`(행위·대상 범위·승인 필요), `resourceLimits`(시간·시도 상한)다. Account·credential 값과 실제 실행 경로는 definition에 포함하지 않으며 인스턴스별 Runtime Binding에서 참조한다. 문자열 길이·포트 및 항목 수는 파서의 설정된 상한을 넘어서는 입력을 거부하고, 실제 수치는 S3으로 확정([설계 확정 기록](DESIGN_FINALIZATION.md))하며, 보안 시험은 제품게이트다.
 
 포트의 v1 타입은 `text`, `json`, `artifactRef`와 `control`이다. 같은 타입만 직접 연결하며 변환은 명시적이고 검증 가능한 노드가 지원될 때만 허용한다. `control`은 실행 순서이고 데이터 포트와 연결할 수 없다. 입력이 required이면 지원하는 한 개의 호환 출처 또는 명시적 사용자 입력을 요구한다. JSON의 세부 타입은 아직 표현하지 않으므로 호환 여부를 단정하지 않고 확인 필요로 표시한다. 알 수 없는 타입·필수 의미·major 버전은 `UNSUPPORTED_SCHEMA`로 실행을 막는다. 동일 major에서 지원하지 않는 minor 및 선택 필드는 보존 가능한 경우에만 편집 없이 보기/내보내기를 허용하며 알 수 없는 의미를 제거한 채 적용하지 않는다. 편집·적용에는 지원하는 전체 의미가 필요하다.
 

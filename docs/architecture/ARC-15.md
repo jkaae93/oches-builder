@@ -40,7 +40,7 @@ flowchart LR
 ```
 
 ## 5. 데이터 모델과 불변 조건
-아래는 논리 모델이다. ID는 불투명하며 충돌하지 않아야 하고 물리 저장 스키마와 wire 형식은 미정이다.
+아래는 논리 모델이다. ID는 불투명하며 충돌하지 않아야 하고 물리 저장 스키마와 wire 형식은 미정이다. 설계 확정(Final, 2026-11-17): wire 형식은 W-block·S4로 확정. 물리 저장 스키마는 제품게이트.
 
 | 객체 | 주요 속성 | 불변 조건 |
 |---|---|---|
@@ -50,12 +50,12 @@ flowchart LR
 | AgentDefinition | definitionId와 ARC-04가 정하는 역할·입출력·도구·권한 | Runtime/모델·계정과 별개; ARC-04가 의미·변환 계약 소유 |
 | RuntimeBinding | instanceId, nodeId, runtimeRef, modelRef, accountRef | 프로젝트 인스턴스에 귀속. accountRef는 불투명 참조이며 인증정보가 아님 |
 | ValidationReport | 대상 ID/revision, schemaVersion, Capability snapshot ID/시간, 검증 결과·근거 | 스냅샷·정책 변경 시 stale; 보고서는 실행 승인 아님 |
-| ImportCandidate | candidateId, 주체·workspace, 입력 출처·형식·원본 해시, 정규화 결과 해시, 검증기·정책 버전, 만료 상태 | 불신 상태이며 미리보기는 실행하지 않음; 임시 보관과 폐기 정책 미정 |
+| ImportCandidate | candidateId, 주체·workspace, 입력 출처·형식·원본 해시, 정규화 결과 해시, 검증기·정책 버전, 만료 상태 | 불신 상태이며 미리보기는 실행하지 않음; 임시 보관과 폐기 정책은 T1(24시간·삭제 규칙)로 확정 |
 
 TemplateVersion에는 표시 이름·설명·사용 사례·태그, graph와 요구 Capability·제약을 포함한다. TemplateFamily 표시 이름은 검색용 메타데이터이며 버전의 표시 내용은 발행 시점에 고정한다. 템플릿 내용과 내보내기에서 토큰·API 키 등 비밀정보는 금지한다. 로컬 경로·계정 참조·실행 환경 식별자는 내보내기에서 기본 제외하는 방향으로 제안하고, 안전 검증과 명시적인 사용자 확인 없이 포함하지 않는다. 자동 비밀 탐지는 완전하지 않다.
 
 ## 6. 스키마와 그래프
-교환 모델 v1 후보는 `schemaVersion`, `metadata`, `nodes`, `edges`, `requirements`의 논리적 묶음이다. `nodes`의 ID는 문서 내 유일, `edges`의 양 끝은 존재하는 노드와 호환되는 포트를 참조한다. 노드 후보 Agent·Task·Tool·Memory·Evaluation·Approval 중 실제 v1 지원 종류와 포트 타입은 ARC-01/04/07과 검증 후 확정한다. JSON/YAML은 같은 내부 모델로 정규화하며 실제 JSON Schema, YAML 부분집합 및 에러 위치 표현은 미결정이다. 임의 코드 실행이나 파일 참조 해석은 파서의 책임이 아니다.
+교환 모델 v1 후보는 `schemaVersion`, `metadata`, `nodes`, `edges`, `requirements`의 논리적 묶음이다. `nodes`의 ID는 문서 내 유일, `edges`의 양 끝은 존재하는 노드와 호환되는 포트를 참조한다. 노드 후보 Agent·Task·Tool·Memory·Evaluation·Approval 중 v1 어휘는 S8·S2로 확정하고, 실행 지원 여부는 ARC-01/04/07과 제품게이트에서 검증한다. JSON/YAML은 같은 내부 모델로 정규화하며 실제 JSON Schema, YAML 부분집합 및 에러 위치 표현은 미결정이다. 설계 확정(Final, 2026-11-17): YAML 부분집합·dialect는 S6·S7로 확정. 정식 JSON Schema 발행·에러 위치 표현은 제품게이트. 임의 코드 실행이나 파일 참조 해석은 파서의 책임이 아니다.
 
 ARC-07의 작업 의존성은 DAG다. 작업 의존 edge의 순환 및 서브그래프 참조 순환은 거부한다. 분기는 조건 언어와 실행 정책이 검증되기 전 `unknown`으로 표시해 실행 불가로 둔다. 반복은 유한 횟수·시간/비용 등 상한과 종료 조건을 표현하고 실제 집행을 증명하기 전 미지원이다. 서브그래프 재사용도 참조 해석·버전 고정·순환 검사와 한계가 정해지기 전 미지원이다. 이것은 무제한 반복 또는 전체 워크플로의 임의 순환을 허용하지 않는다.
 
@@ -98,7 +98,7 @@ stateDiagram-v2
 이 상태는 사용자 템플릿 버전의 생명주기다. Published는 불변이며 새 Draft는 새 버전 후보이다. 기본 템플릿은 사용자 Draft·Archived로 전환하지 않는다. 인스턴스는 revision과 별도 validation report로 관리한다. 저장 중 충돌은 변경을 적용하지 않고 재조회·비교하도록 반환한다. 게시와 이벤트의 원자성은 ARC-10 저장 계약에 의존하며 실제 보장 전 검증 필요하다.
 
 ## 9. 검증 파이프라인과 실행 게이트
-1. **안전한 읽기**: 크기·깊이·리소스 제한, JSON/YAML 파서 안전 설정, YAML 사용자 정의 태그·외부 참조 및 실행형 생성 금지. 지원되는 YAML 별칭 정책은 미정이며 제한이 검증되기 전 별칭을 거부한다. JSON/YAML 중복 키, 문자열이 아닌 맵 키, JSON 모델에 안전하게 매핑할 수 없는 값은 조용히 변환하지 않고 거부한다. 세부 허용 집합은 스키마 확정 시 결정한다.
+1. **안전한 읽기**: 크기·깊이·리소스 제한, JSON/YAML 파서 안전 설정, YAML 사용자 정의 태그·외부 참조 및 실행형 생성 금지. 지원되는 YAML 별칭 정책은 S6으로 확정(v1 별칭 거부, 2026-11-17 Final). JSON/YAML 중복 키, 문자열이 아닌 맵 키, JSON 모델에 안전하게 매핑할 수 없는 값은 조용히 변환하지 않고 거부한다. 세부 허용 집합은 S6·S7로 확정(2026-11-17 Final).
 2. **스키마**: 필수 속성·타입·알 수 없는 버전·중복 ID·알 수 없는 노드/필드를 확인한다. 미래 버전·의미를 모르는 필수 필드는 실행을 막는다. 원본 보존 및 안전한 내보내기 가능 여부는 별도 검사한다.
 3. **구조**: edge 참조·포트 타입·작업 의존 DAG·서브그래프 순환·분기/반복 지원 및 상한을 검사한다.
 4. **환경**: 요구 Capability와 설치 버전·계정 참조·권한의 지원 여부를 ARC-05/06의 최신 스냅샷과 비교한다. 각 요구는 supported/unsupported/unknown으로 표시한다.
@@ -147,13 +147,15 @@ AI 추천은 ARC-03이 후보·이유·대안을 제공하고 사용자가 선�
 ## 14. 관련 ADR, 의존 관계 및 미결정
 ADR-004·008·009·010·012, 제안 ADR-014·015에 관련된다. ARC-11의 인증·클라이언트 정책과 ARC-10의 저장 경계는 선행 합의가 필요하며 현재 논리적 가정이다. ARC-03 추천, ARC-04 정의, ARC-05 Capability, ARC-07 DAG, ARC-09 승인과 교차 검토한다. JSON Schema와 YAML 부분집합·구체 크기 상한, 노드/포트 목록, 스키마 호환·마이그레이션 알고리즘, 저장 구현, 실행 시점의 승인 전달·취소, 클라이언트별 편집 범위와 제안된 데이터 삭제·보존 정책의 구현 및 검증은 미정이다.
 
+설계 확정(Final, 2026-11-17): S4·S5·S6·S7·S8·S9·S10·T5·T8 확정. 승인 전달은 기존 계약+D06·T3 유지. 정식 스키마 발행·저장 구현·클라이언트별 편집 범위·삭제보존 구현검증·에러 위치 표현은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).
+
 ## 15. 교환 모델의 검토용 예시와 해석 규칙
 
-아래 JSON은 **확정된 JSON Schema나 실행 가능한 템플릿이 아닌 예시**다. 노드 종류·Capability 이름은 ARC-04/05와 정합성 검증 전이므로 예시의 `example.*`는 실제 Provider 기능으로 사용하지 않는다. 계정 참조와 로컬 경로는 포함하지 않는다.
+아래 JSON은 **확정된 JSON Schema나 실행 가능한 템플릿이 아닌 예시**다. 2026-11-17 동결(S4): 정식 버전 표기는 구조화 {major, minor}이며 아래 예시도 구조화 표기를 사용한다. 노드 종류·Capability 이름은 ARC-04/05와 정합성 검증 전이므로 예시의 `example.*`는 실제 Provider 기능으로 사용하지 않는다. 계정 참조와 로컬 경로는 포함하지 않는다.
 
 ```json
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": {"major": 1, "minor": 0},
   "metadata": {
     "name": "검토 예시",
     "description": "단일 Agent 구조의 예시",
@@ -166,7 +168,7 @@ ADR-004·008·009·010·012, 제안 ADR-014·015에 관련된다. ARC-11의 인�
       "kind": "agent",
       "label": "작업 담당",
       "definition": {
-        "schemaVersion": "1.0",
+        "schemaVersion": {"major": 1, "minor": 0},
         "definitionId": "definition-example-1",
         "revision": 1,
         "role": "사용자 목표 처리",
@@ -190,10 +192,10 @@ ADR-004·008·009·010·012, 제안 ADR-014·015에 관련된다. ARC-11의 인�
 ### 호환성 및 버전 판정안
 
 - 버전 문자열은 `major.minor` 형식을 후보로 한다. 입력이 모르는 major면 `UNSUPPORTED_SCHEMA`로 실행과 게시를 거부한다. 더 높은 minor의 알 수 없는 필드가 의미에 영향을 미칠 가능성을 배제할 수 없으면 `UNKNOWN_SCHEMA_FEATURE`로 실행을 막는다. 호환성 보장은 실제 스키마와 마이그레이션 검증 후 결정한다.
-- 제품 교환 형식의 `schemaVersion`은 JSON Schema 표준의 dialect를 뜻하지 않는다. JSON Schema를 채택하면 사용하는 dialect의 `$schema`와 제품 형식 버전을 별도로 선언·관리하고, 원격 `$ref` 자동 다운로드를 허용하지 않는다. 구체 dialect와 로컬 스키마 배포는 미정이다. [JSON Schema 공식 문서](https://json-schema.org/understanding-json-schema/reference/schema)
+- 제품 교환 형식의 `schemaVersion`은 JSON Schema 표준의 dialect를 뜻하지 않는다. JSON Schema를 채택하면 사용하는 dialect의 `$schema`와 제품 형식 버전을 별도로 선언·관리하고, 원격 `$ref` 자동 다운로드를 허용하지 않는다. 구체 dialect와 로컬 스키마 배포는 S7(Draft 2020-12·로컬)로 확정(2026-11-17 Final). [JSON Schema 공식 문서](https://json-schema.org/understanding-json-schema/reference/schema)
 - 같은 schemaVersion이어도 TemplateVersion 식별자와 Instance revision은 서로 독립한다. 저장된 인스턴스가 참조하는 출처 버전이 삭제 표시돼도 인스턴스의 그래프 스냅샷을 유지한다.
 - 변환은 `sourceVersion → targetVersion`과 변경점, 보존 불가 요소를 미리 보고 사용자 확인을 받는다. 대상 형식을 안전하게 해석하지 못하면 변환하지 않는다. 실패 시 이전 버전과 인스턴스를 변경하지 않는다.
-- validation report는 대상 revision, Capability snapshot, 정책 버전이 하나라도 바뀌면 stale이다. 시간 만료 기준은 결정되지 않았으므로 실행 전 재조회·재검증을 요구한다.
+- validation report는 대상 revision, Capability snapshot, 정책 버전이 하나라도 바뀌면 stale이다. 시간 만료 기준은 T8(24시간)로 확정(2026-11-17 Final). 실행 전 재조회·재검증 의무는 유지한다.
 
 ### 오류 분류안
 
@@ -257,7 +259,7 @@ ADR-004·008·009·010·012, 제안 ADR-014·015에 관련된다. ARC-11의 인�
 | 도구·기억·평가 참조 | Agent 또는 Task → Tool/Memory/Evaluation | 사용할 구성요소 및 평가 요구를 참조한다 | ARC-04/08/09의 권한·의미를 확인한다. 참조만으로 도구 호출이나 기억 전송을 허가하지 않는다. |
 | 승인 요구 | Task 또는 위험 행위 → Approval | 지정 범위의 사용자 승인이 필요하다는 요구를 표현한다 | ARC-09의 승인 요청으로 변환한다. 시각적 노드 자체는 승인 증거가 아니다. |
 
-Agent 포트의 최초 타입과 연결 제약은 아래 v0.2 제안을 따른다. 다른 노드의 포트 이름·타입, 다중 연결·병합, 조건식 언어, 노드별 정확한 직렬화는 확정 전이다. Validator는 의미를 알 수 없는 관계를 장식으로 버리지 않고 `unknown`으로 보고 실행 계획 생성을 차단한다. 좌표·색상 등 UI 전용 배치 정보는 실행 권한이나 의미에 영향을 주지 않도록 논리 그래프와 구분하며, 실제 교환 형식에서 보존할지는 미정이다.
+Agent 포트의 최초 타입과 연결 제약은 아래 v0.2 제안을 따른다. 다른 노드의 포트 이름·타입은 S2로, 조건식 언어는 v1 실행 UNSUPPORTED(S8)로 확정한다. 다중 연결·병합 의미 미정의는 UNKNOWN·차단(기존 규칙 유지). 노드별 정확한 직렬화는 제품게이트. Validator는 의미를 알 수 없는 관계를 장식으로 버리지 않고 `unknown`으로 보고 실행 계획 생성을 차단한다. 좌표·색상 등 UI 전용 배치 정보는 실행 권한이나 의미에 영향을 주지 않도록 논리 그래프와 구분하며, 실제 교환 형식에서는 미포함으로 확정한다(S10, 2026-11-17 Final).
 
 ### 계획 수립 및 변경 보호
 

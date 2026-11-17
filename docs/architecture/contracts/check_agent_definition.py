@@ -18,7 +18,7 @@ def reject_duplicate_keys(pairs):
 
 
 def decode(data):
-    if len(data) > 65536:
+    if len(data) > 262144:  # S3: definition document max 256 KiB
         raise ValueError('input too large')
     def reject_constant(value):
         raise ValueError('non-finite JSON number: ' + value)
