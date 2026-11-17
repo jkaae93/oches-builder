@@ -7,6 +7,16 @@ final class JSONCanonicalizationTests: XCTestCase {
         try validateUniqueJSONKeys(Data(text.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
     }
 
+    func testIndependentReferenceVectors() throws {
+        let directory = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures/jcs")
+        for name in ["french", "structures", "unicode", "weird"] {
+            let input = try Data(contentsOf: directory.appendingPathComponent("\(name).input.json"))
+            let expected = try Data(contentsOf: directory.appendingPathComponent("\(name).output.json"))
+            let value = try validateUniqueJSONKeys(input, maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+            XCTAssertEqual(try canonicalizeJSON(value), expected, "vector: \(name)")
+        }
+    }
+
     func testRFC8785Example() throws {
         let input = #"{"numbers":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],"string":"€$\u000f\nA'B\"\\\"/","literals":[null,true,false]}"#
         // The wire's provisional safe-number restriction rejects 1E30;
