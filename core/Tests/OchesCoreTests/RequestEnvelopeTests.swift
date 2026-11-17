@@ -59,6 +59,18 @@ final class RequestEnvelopeTests: XCTestCase {
         XCTAssertEqual(try canonicalSHA256(envelope.original), try canonicalSHA256(value))
     }
 
+    func testRequestTreeDigestChangesWithApprovalOrRevision() throws {
+        let request = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"approvalRefs":["a"],"expectedRevision":{"objectId":"o","storeGeneration":"g1","revision":"12"}}"#
+        func digest(_ text: String) throws -> Data {
+            let parsed = try validateUniqueJSONKeys(Data(text.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+            return try canonicalSHA256(validateRequestEnvelope(parsed, negotiated: version).original)
+        }
+        let baseline = try digest(request)
+        XCTAssertNotEqual(baseline, try digest(request.replacingOccurrences(of: #""approvalRefs":["a"]"#, with: #""approvalRefs":["b"]"#)))
+        XCTAssertNotEqual(baseline, try digest(request.replacingOccurrences(of: #""storeGeneration":"g1""#, with: #""storeGeneration":"g2""#)))
+        XCTAssertNotEqual(baseline, try digest(request.replacingOccurrences(of: #""revision":"12""#, with: #""revision":"13""#)))
+    }
+
     func testRevisionRequiresCanonicalDecimalString() throws {
         let base = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"0"}}"#
         try validate(base)
