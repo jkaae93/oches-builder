@@ -37,6 +37,13 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(validator.is_valid({**request, "payload": None}))
         self.assertFalse(validator.is_valid({**request, "unexpected": True}))
 
+    def test_shared_response_cases(self):
+        validator = schema("response")
+        path = ROOT.parent / "Tests/OchesCoreTests/Fixtures/envelopes/response-cases.json"
+        for case in json.loads(path.read_text()):
+            with self.subTest(case=case["name"]):
+                self.assertEqual(validator.is_valid(case["response"]), case["valid"])
+
     def test_response_exclusive_result(self):
         validator = schema("response")
         self.assertTrue(validator.is_valid({"requestId": "r", "result": {"ok": {}}}))
