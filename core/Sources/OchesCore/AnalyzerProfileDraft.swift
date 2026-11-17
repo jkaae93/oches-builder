@@ -28,6 +28,9 @@ struct AnalyzerProfileDraft {
         let relativePath: String
         let reason: String
         let size: Int64
+        let modifiedSeconds: Int64
+        let modifiedNanoseconds: Int64
+        let symbolicLinkTarget: String?
     }
 
     let profileID: String
@@ -90,10 +93,18 @@ struct AnalyzerProfileDraft {
         }
         // Extension observations do not prove build configuration or primary language.
         let inferences: [Inference] = []
+        let readPaths = Set(collection.files.map { Data($0.relativePath.utf8) })
         let skipped = collection.preview.entries.compactMap { entry -> Skipped? in
-            if let exclusion = entry.exclusion { return Skipped(relativePath: entry.relativePath, reason: "excluded_" + exclusion.rawValue, size: entry.size) }
-            if let reason = collection.unreadReasons[entry.relativePath] { return Skipped(relativePath: entry.relativePath, reason: reason, size: entry.size) }
-            return nil
+            let reason: String
+            if let exclusion = entry.exclusion { reason = "excluded_" + exclusion.rawValue }
+            else if let unread = collection.unreadReasons[entry.relativePath] { reason = unread }
+            else if entry.kind == .symbolicLink { reason = "symbolic_link_not_followed" }
+            else if entry.kind == .other { reason = "unsupported_file_type" }
+            else if entry.kind == .regular && !readPaths.contains(Data(entry.relativePath.utf8)) { reason = "not_analyzed" }
+            else { return nil }
+            return Skipped(relativePath: entry.relativePath, reason: reason, size: entry.size,
+                           modifiedSeconds: entry.modifiedSeconds, modifiedNanoseconds: entry.modifiedNanoseconds,
+                           symbolicLinkTarget: entry.symbolicLinkTarget)
         }
         let limits = collection.partialReasons.filter { ["entry_limit", "time_limit", "depth_limit", "file_limit", "total_limit"].contains($0) }.sorted()
         var uncertainties = ["secret_detection_incomplete", "project_language_unknown", "freshness_unverified"]

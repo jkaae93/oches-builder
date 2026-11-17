@@ -3,6 +3,32 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerProfileDraftTests: XCTestCase {
+    func testSkippedMetadataAndLinkTargetSurviveInProfile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data(repeating: 65, count: 20).write(to: root.appendingPathComponent("large.txt"))
+        try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("outside").path, withDestinationPath: "/outside/secret")
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let collection = try scanner.collectEvidence(maximumFileBytes: 10)
+        let draft = try AnalyzerProfileDraft.build(profileID: "p", workspaceRef: "w", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], exclusions: [], userConstraints: [], collection: collection)
+        let skippedFile = try XCTUnwrap(draft.skipped.first { $0.relativePath == "large.txt" })
+        let previewFile = try XCTUnwrap(collection.preview.entries.first { $0.relativePath == "large.txt" })
+        XCTAssertEqual(skippedFile.reason, "file_limit")
+        XCTAssertEqual(skippedFile.size, 20)
+        XCTAssertEqual(skippedFile.modifiedSeconds, previewFile.modifiedSeconds)
+        XCTAssertEqual(skippedFile.modifiedNanoseconds, previewFile.modifiedNanoseconds)
+        let link = try XCTUnwrap(draft.skipped.first { $0.relativePath == "outside" })
+        XCTAssertEqual(link.reason, "symbolic_link_not_followed")
+        XCTAssertEqual(link.symbolicLinkTarget, "/outside/secret")
+        XCTAssertFalse(draft.evidence.contains { $0.relativePath == "outside" })
+
+        let interrupted = AnalyzerSafeRoot.EvidenceCollection(preview: collection.preview, files: [], unreadReasons: [:], partialReasons: ["cancelled"], cancelled: true)
+        let partial = try AnalyzerProfileDraft.build(profileID: "p", workspaceRef: "w", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], exclusions: [], userConstraints: [], collection: interrupted)
+        XCTAssertEqual(partial.skipped.first { $0.relativePath == "large.txt" }?.reason, "not_analyzed")
+        XCTAssertEqual(partial.state, .cancelled)
+    }
+
     func testEvidenceComparisonDetectsChangesButNeverClaimsFreshness() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
