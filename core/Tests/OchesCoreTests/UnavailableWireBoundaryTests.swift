@@ -29,8 +29,18 @@ final class UnavailableWireBoundaryTests: XCTestCase {
 
     func testErrorsUseFixedSafeCategories() {
         XCTAssertEqual(UnavailableWireResult.invalidInput.safeError, SafeWireError(code: .invalidInput, detail: nil))
+        XCTAssertEqual(UnavailableWireResult.denied.safeError, SafeWireError(code: .denied, detail: nil))
         XCTAssertEqual(UnavailableWireResult.versionUnsupported.safeError, SafeWireError(code: .unsupported, detail: "VERSION_UNSUPPORTED"))
         XCTAssertEqual(UnavailableWireResult.unavailable.safeError, SafeWireError(code: .unavailable, detail: nil))
+    }
+
+    func testDeniesMismatchedVerifiedClientIdentity() {
+        let boundary = UnavailableWireBoundary()
+        let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
+        let request = Data(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"e\u0301","workspaceId":"w","requestId":"r","operation":"q","payload":{}}"#.utf8)
+        XCTAssertEqual(boundary.inspect(request, negotiated: version, verifiedClientID: "e\u{0301}", maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024), .unavailable)
+        XCTAssertEqual(boundary.inspect(request, negotiated: version, verifiedClientID: "\u{00e9}", maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024), .denied)
+        XCTAssertEqual(boundary.inspect(request, negotiated: version, verifiedClientID: "other", maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024), .denied)
     }
 
     func testMalformedInputDoesNotAppearInSafeError() {

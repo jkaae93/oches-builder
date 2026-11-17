@@ -2,6 +2,7 @@ import Foundation
 
 public enum RequestEnvelopeError: Error, Equatable {
     case invalidInput
+    case clientIdentityMismatch
     case versionUnsupported
 }
 
@@ -21,7 +22,7 @@ struct ValidatedRequestEnvelope {
 /// Structural validation only. It does not authenticate, authorize, validate
 /// operation payloads, or make a request eligible for dispatch.
 @discardableResult
-func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws -> ValidatedRequestEnvelope {
+func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol, verifiedClientID: String? = nil) throws -> ValidatedRequestEnvelope {
     guard case .object(let members) = value else { throw RequestEnvelopeError.invalidInput }
     guard Set(members.map { Data($0.0.utf8) }).count == members.count else { throw RequestEnvelopeError.invalidInput }
     func field(_ name: String) -> RawJSONValue? {
@@ -54,6 +55,9 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
           case .string(let operation) = field("operation"), !operation.isEmpty,
           let payload = field("payload"), case .object = payload else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
+    if let verifiedClientID, !clientID.utf8.elementsEqual(verifiedClientID.utf8) {
+        throw RequestEnvelopeError.clientIdentityMismatch
+    }
     let expectedRevision = try field("expectedRevision").map(parseRevisionRef)
     var approvalRefs: [String]?
     if let approvals = field("approvalRefs") {

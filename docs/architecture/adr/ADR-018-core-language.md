@@ -1,6 +1,6 @@
 # ADR-018: Shared Core implementation language
 
-Status: Proposed for implementation review, 2026-11-17. Refs #1. This does not claim XPC identity, key protection, or platform support has been verified.
+Status: Accepted for IMP-01 Phase 1 macOS arm64 scaffold, 2026-11-17. Refs #1. This does not claim XPC identity, key protection, or platform support has been verified.
 
 ## Context
 

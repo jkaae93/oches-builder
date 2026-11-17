@@ -1,6 +1,6 @@
 # ADR-019: Provisional wire input limits and numeric policy
 
-Status: Proposed, 2026-11-17. Refs #1. Not an approved interoperability contract.
+Status: Accepted (provisional fail-closed v1 baseline for IMP-01), 2026-11-17. Refs #1. Final operation-specific limits and signed-byte domain separation remain gated on subsequent issues.
 
 ## Context
 

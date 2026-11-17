@@ -24,6 +24,7 @@ public extension UnavailableWireResult {
     var safeError: SafeWireError {
         switch self {
         case .invalidInput: return SafeWireError(code: .invalidInput, detail: nil)
+        case .denied: return SafeWireError(code: .denied, detail: nil)
         case .versionUnsupported: return SafeWireError(code: .unsupported, detail: "VERSION_UNSUPPORTED")
         case .unavailable: return SafeWireError(code: .unavailable, detail: nil)
         }
