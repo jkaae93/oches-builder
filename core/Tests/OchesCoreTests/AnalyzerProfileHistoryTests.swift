@@ -3,6 +3,80 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerProfileHistoryTests: XCTestCase {
+    func testCrashDuringProfileCommitDoesNotPublishPartialRevision() throws {
+        if let path = ProcessInfo.processInfo.environment["OCHES_PROFILE_CRASH_DB"],
+           let name = ProcessInfo.processInfo.environment["OCHES_PROFILE_CRASH_STAGE"],
+           let stage = TransitionCrashStage(rawValue: name) {
+            let store = try SQLiteStore(path: path, workspaceID: "ws", initialStoreGeneration: "gen")
+            let request = TransitionRequest(actorID: "actor", workspaceID: "ws", operation: "profile.commit", requestID: "next", objectID: "p", ownerModule: "ARC-02", expectedRevision: RevisionRef(objectID: "p", storeGeneration: "gen", revision: "1"), normalizedInput: .object([]), nextStateJSON: "{\"v\":2}", events: [NewEventRecord(eventID: "e2", sourceID: "analyzer", kind: "profile.committed", payloadJSON: "{}", observedAt: 2)], responseJSON: "{}", nowEpochSeconds: 2, crashStage: stage, onCrashStage: { _ in _exit(71) })
+            _ = try store.commitProfileTransition(request)
+            XCTFail("crash hook did not fire")
+            return
+        }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for stage in ["afterStateWrite", "afterEventWrite", "afterIdempotencyWrite"] {
+            let path = dir.appendingPathComponent(stage).path
+            let store = try SQLiteStore(path: path, workspaceID: "ws", initialStoreGeneration: "gen")
+            let request = TransitionRequest(actorID: "actor", workspaceID: "ws", operation: "profile.commit", requestID: "init", objectID: "p", ownerModule: "ARC-02", expectedRevision: nil, normalizedInput: .object([]), nextStateJSON: "{\"v\":1}", events: [], responseJSON: "{}", nowEpochSeconds: 1)
+            let first = try store.commitProfileTransition(request)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
+            process.arguments = ["-XCTest", "OchesCoreTests.AnalyzerProfileHistoryTests/testCrashDuringProfileCommitDoesNotPublishPartialRevision", Bundle(for: AnalyzerProfileHistoryTests.self).bundlePath]
+            var env = ProcessInfo.processInfo.environment
+            env["OCHES_PROFILE_CRASH_DB"] = path
+            env["OCHES_PROFILE_CRASH_STAGE"] = stage
+            process.environment = env
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            XCTAssertEqual(process.terminationStatus, 71)
+            let reopened = try SQLiteStore(path: path, workspaceID: "ws")
+            XCTAssertEqual(try reopened.readSnapshot(workspaceID: "ws", objectID: "p").revision, first.revision)
+            XCTAssertEqual(try reopened.readProfileRevision(workspaceID: "ws", revision: first.revision), "{\"v\":1}")
+            let second = RevisionRef(objectID: "p", storeGeneration: "gen", revision: "2")
+            XCTAssertThrowsError(try reopened.readProfileRevision(workspaceID: "ws", revision: second)) { XCTAssertEqual($0 as? StorageError, .notFound) }
+            let events = try reopened.listEvents(workspaceID: "ws", after: EventCursor(workspaceID: "ws", storeGeneration: "gen", sequence: 0))
+            XCTAssertTrue(events.events.isEmpty)
+            let retry = TransitionRequest(actorID: "actor", workspaceID: "ws", operation: "profile.commit", requestID: "next", objectID: "p", ownerModule: "ARC-02", expectedRevision: first.revision, normalizedInput: .object([]), nextStateJSON: "{\"v\":2}", events: [NewEventRecord(eventID: "e2", sourceID: "analyzer", kind: "profile.committed", payloadJSON: "{}", observedAt: 2)], responseJSON: "{}", nowEpochSeconds: 2)
+            XCTAssertFalse(try reopened.commitProfileTransition(retry).idempotentReplay)
+        }
+    }
+
+    func testConcurrentProfileWritersPreserveOnlyWinningRevision() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let path = dir.appendingPathComponent("db").path
+        let firstStore = try SQLiteStore(path: path, workspaceID: "ws", initialStoreGeneration: "gen")
+        let secondStore = try SQLiteStore(path: path, workspaceID: "ws", initialStoreGeneration: "gen")
+        func request(_ id: String, _ expected: RevisionRef?) -> TransitionRequest {
+            TransitionRequest(actorID: "actor", workspaceID: "ws", operation: "profile.commit", requestID: id, objectID: "p", ownerModule: "ARC-02", expectedRevision: expected, normalizedInput: .object([]), nextStateJSON: "{\"writer\":\"\(id)\"}", events: [], responseJSON: "{}", nowEpochSeconds: 1)
+        }
+        let initial = try firstStore.commitProfileTransition(request("initial", nil))
+        final class Outcomes: @unchecked Sendable {
+            let lock = NSLock()
+            var values: [String] = []
+            func add(_ value: String) { lock.lock(); defer { lock.unlock() }; values.append(value) }
+        }
+        let outcomes = Outcomes()
+        let requests = [request("a", initial.revision), request("b", initial.revision)]
+        let stores = [firstStore, secondStore]
+        DispatchQueue.concurrentPerform(iterations: 2) { index in
+            do {
+                let result = try stores[index].commitProfileTransition(requests[index])
+                outcomes.add("ok:" + result.revision.revision)
+            } catch StorageError.versionConflict { outcomes.add("conflict") }
+            catch { outcomes.add("error:\(error)") }
+        }
+        XCTAssertEqual(Set(outcomes.values), ["ok:2", "conflict"])
+        let latest = try firstStore.readSnapshot(workspaceID: "ws", objectID: "p")
+        XCTAssertEqual(try firstStore.readProfileRevision(workspaceID: "ws", revision: latest.revision), latest.stateJSON)
+        XCTAssertEqual(try firstStore.readProfileRevision(workspaceID: "ws", revision: initial.revision), "{\"writer\":\"initial\"}")
+    }
+
     func testVersionOneDatabaseMigratesWithoutLosingState() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
