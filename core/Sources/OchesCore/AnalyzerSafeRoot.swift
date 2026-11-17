@@ -38,7 +38,7 @@ final class AnalyzerSafeRoot {
         try readEvidence(relativePath: relativePath, maximumBytes: maximumBytes, userExcludedPaths: userExcludedPaths, beforeFinalOpen: beforeFinalOpen, beforeFinalStat: beforeFinalStat).bytes
     }
 
-    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> ReadEvidence {
+    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil, onBytesRead: ((Int) -> Void)? = nil, shouldStop: () -> Bool = { false }) throws -> ReadEvidence {
         guard maximumBytes > 0, maximumBytes <= 1_048_576,
               !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0) else { throw AccessError.invalidPath }
         guard try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) == nil else { throw AccessError.excluded }
@@ -64,14 +64,15 @@ final class AnalyzerSafeRoot {
         guard before.st_size >= 0, before.st_size <= maximumBytes else { throw AccessError.limitExceeded }
         var result = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
-        while true {
-            let count = Darwin.read(current, &buffer, buffer.count)
+        while result.count < maximumBytes {
+            guard !shouldStop() else { throw AccessError.unavailable }
+            let count = Darwin.read(current, &buffer, min(buffer.count, maximumBytes - result.count))
             if count < 0 {
                 if errno == EINTR { continue }
                 throw AccessError.unavailable
             }
             if count == 0 { break }
-            guard result.count + count <= maximumBytes else { throw AccessError.limitExceeded }
+            onBytesRead?(count)
             result.append(contentsOf: buffer.prefix(count))
         }
         beforeFinalStat?()
@@ -232,14 +233,21 @@ extension AnalyzerSafeRoot {
             if entry.size > maximumFileBytes { unread[entry.relativePath] = "file_limit"; reasons.insert("file_limit"); continue }
             let remaining = maximumTotalBytes - total
             if entry.size > remaining || remaining == 0 { unread[entry.relativePath] = "total_limit"; reasons.insert("total_limit"); break }
+            var stoppedForCancellation = false
+            var stoppedForTime = false
             do {
-                let result = try readEvidence(relativePath: entry.relativePath, maximumBytes: min(maximumFileBytes, remaining), userExcludedPaths: userExcludedPaths, expectedDevice: entry.device, expectedInode: entry.inode)
-                total += result.bytes.count
+                let result = try readEvidence(relativePath: entry.relativePath, maximumBytes: min(maximumFileBytes, remaining), userExcludedPaths: userExcludedPaths, expectedDevice: entry.device, expectedInode: entry.inode, onBytesRead: { total += $0 }, shouldStop: {
+                    if isCancelled() { stoppedForCancellation = true; return true }
+                    if ProcessInfo.processInfo.systemUptime >= deadline { stoppedForTime = true; return true }
+                    return false
+                })
                 files.append(FileEvidence(relativePath: entry.relativePath, size: result.size, modifiedSeconds: result.modifiedSeconds, modifiedNanoseconds: result.modifiedNanoseconds, sha256: result.sha256))
             } catch {
                 unread[entry.relativePath] = "read_unavailable_or_changed"
                 reasons.insert("read_incomplete")
             }
+            if stoppedForCancellation || isCancelled() { cancelled = true; reasons.insert("cancelled"); break }
+            if stoppedForTime || ProcessInfo.processInfo.systemUptime >= deadline { reasons.insert("time_limit"); break }
         }
         // Cancellation after the final read still prevents a complete result.
         if isCancelled() { cancelled = true; reasons.insert("cancelled") }

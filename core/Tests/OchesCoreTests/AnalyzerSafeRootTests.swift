@@ -161,6 +161,22 @@ extension AnalyzerSafeRootTests {
         XCTAssertTrue(limited.partialReasons.contains("total_limit"))
     }
 
+    func testFailedReadAccountsBytesAndCancellationStopsNextChunk() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("sample.txt")
+        try Data(repeating: 65, count: 32_768).write(to: file)
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        var bytesRead = 0
+        var cancel = false
+        XCTAssertThrowsError(try scanner.readEvidence(relativePath: "sample.txt", maximumBytes: 32_768, onBytesRead: { bytesRead += $0; cancel = true }, shouldStop: { cancel }))
+        XCTAssertEqual(bytesRead, 16_384)
+        bytesRead = 0
+        XCTAssertThrowsError(try scanner.readEvidence(relativePath: "sample.txt", maximumBytes: 32_768, beforeFinalStat: { try? Data("changed".utf8).write(to: file) }, onBytesRead: { bytesRead += $0 }))
+        XCTAssertEqual(bytesRead, 32_768)
+    }
+
     func testOutsideHardLinkIsNotRead() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = base.appendingPathComponent("root")
