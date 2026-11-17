@@ -11,6 +11,22 @@ final class UnavailableWireBoundaryTests: XCTestCase {
         XCTAssertEqual(boundary.inspect(request, negotiated: version, maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024), .unavailable)
     }
 
+    func testConcurrentInspectionsRemainUnavailable() async {
+        let request = Data(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"run","payload":{}}"#.utf8)
+        let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
+        let boundary = UnavailableWireBoundary()
+        let results = await withTaskGroup(of: UnavailableWireResult.self, returning: [UnavailableWireResult].self) { group in
+            for _ in 0..<100 {
+                group.addTask { boundary.inspect(request, negotiated: version, maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024) }
+            }
+            var collected: [UnavailableWireResult] = []
+            for await result in group { collected.append(result) }
+            return collected
+        }
+        XCTAssertEqual(results.count, 100)
+        XCTAssertTrue(results.allSatisfy { $0 == .unavailable })
+    }
+
     func testRejectsDuplicateAndUnsupportedVersion() {
         let boundary = UnavailableWireBoundary()
         let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
