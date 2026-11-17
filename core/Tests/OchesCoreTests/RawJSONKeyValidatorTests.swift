@@ -85,6 +85,25 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testIndependentValidJSONSuite() throws {
+        let root = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures/json-test-suite")
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("y_") && $0.pathExtension == "json" }
+        XCTAssertEqual(files.count, 95)
+        for file in files {
+            var wrapped = Data(#"{"value":"#.utf8)
+            wrapped.append(try Data(contentsOf: file))
+            wrapped.append(Data("}".utf8))
+            if ["y_object_duplicated_key.json", "y_object_duplicated_key_and_value.json"].contains(file.lastPathComponent) {
+                XCTAssertThrowsError(try parseJSON(wrapped, maximumBytes: 1_048_576, maximumDepth: 128, maximumStringBytes: 262_144, wirePolicy: false)) {
+                    XCTAssertEqual($0 as? RawJSONValidationError, .duplicateKey)
+                }
+            } else {
+                XCTAssertNoThrow(try parseJSON(wrapped, maximumBytes: 1_048_576, maximumDepth: 128, maximumStringBytes: 262_144, wirePolicy: false), file.lastPathComponent)
+            }
+        }
+    }
+
     func testIndependentInvalidJSONSuite() throws {
         let root = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures/json-test-suite")
         let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
