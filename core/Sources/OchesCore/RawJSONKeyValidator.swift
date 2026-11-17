@@ -5,26 +5,37 @@ public enum RawJSONValidationError: Error, Equatable {
     case duplicateKey
     case limitExceeded
     case unsafeNumber
-    case unsupportedUnicodeKeyEquivalence
+}
+
+/// JSON objects retain ordered members instead of using Swift String-keyed maps.
+public indirect enum RawJSONValue {
+    case object([(String, RawJSONValue)])
+    case array([RawJSONValue])
+    case string(String)
+    case number(String)
+    case bool(Bool)
+    case null
 }
 
 /// Detects duplicate object keys before Foundation can discard them. This is not
 /// a complete wire validator: schema and JCS checks are
 /// still required before any request can be dispatched.
-public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws {
+@discardableResult
+public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws -> RawJSONValue {
     guard maximumBytes > 0, maximumDepth > 0, maximumStringBytes > 0 else { throw RawJSONValidationError.invalidInput }
     guard data.count <= maximumBytes else { throw RawJSONValidationError.limitExceeded }
     guard String(data: data, encoding: .utf8) != nil else { throw RawJSONValidationError.invalidInput }
     var scanner = KeyScanner(bytes: Array(data), maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes)
     scanner.whitespace()
     guard scanner.index < scanner.bytes.count, scanner.bytes[scanner.index] == 0x7b else { throw RawJSONValidationError.invalidInput }
-    try scanner.value(depth: 0)
+    let value = try scanner.value(depth: 0)
     scanner.whitespace()
     guard scanner.index == scanner.bytes.count else { throw RawJSONValidationError.invalidInput }
     // Parse only after bounded scanning; Foundation validates syntax, not duplicate keys.
     guard let root = try? JSONSerialization.jsonObject(with: data), root is [String: Any] else {
         throw RawJSONValidationError.invalidInput
     }
+    return value
 }
 
 private struct KeyScanner {
@@ -37,13 +48,13 @@ private struct KeyScanner {
         while index < bytes.count && [0x20, 0x0a, 0x0d, 0x09].contains(bytes[index]) { index += 1 }
     }
 
-    mutating func value(depth: Int) throws {
+    mutating func value(depth: Int) throws -> RawJSONValue {
         whitespace()
         guard index < bytes.count else { throw RawJSONValidationError.invalidInput }
         switch bytes[index] {
-        case 0x7b: try object(depth: depth + 1)
-        case 0x5b: try array(depth: depth + 1)
-        case 0x22: _ = try string()
+        case 0x7b: return try object(depth: depth + 1)
+        case 0x5b: return try array(depth: depth + 1)
+        case 0x22: return .string(try string())
         default:
             let start = index
             while index < bytes.count && ![0x2c, 0x5d, 0x7d, 0x20, 0x0a, 0x0d, 0x09].contains(bytes[index]) { index += 1 }
@@ -63,42 +74,48 @@ private struct KeyScanner {
                       !decimal.isNaN else { throw RawJSONValidationError.unsafeNumber }
                 let limit = Decimal(9_007_199_254_740_991 as Int64)
                 guard decimal <= limit && decimal >= -limit else { throw RawJSONValidationError.unsafeNumber }
+                return .number(token)
+            }
+            switch token {
+            case "true": return .bool(true)
+            case "false": return .bool(false)
+            case "null": return .null
+            default: throw RawJSONValidationError.invalidInput
             }
         }
     }
 
-    mutating func object(depth: Int) throws {
+    mutating func object(depth: Int) throws -> RawJSONValue {
         guard depth <= maximumDepth else { throw RawJSONValidationError.limitExceeded }
         index += 1
         whitespace()
-        if take(0x7d) { return }
+        if take(0x7d) { return .object([]) }
         var keys = Set<Data>()
-        var swiftKeys = Set<String>()
+        var members: [(String, RawJSONValue)] = []
         repeat {
             whitespace()
             let key = try string()
             guard keys.insert(Data(key.utf8)).inserted else { throw RawJSONValidationError.duplicateKey }
-            // Swift String equality uses canonical Unicode equivalence. Until
-            // decoding preserves distinct keys, refuse inputs it would collapse.
-            guard swiftKeys.insert(key).inserted else { throw RawJSONValidationError.unsupportedUnicodeKeyEquivalence }
             whitespace()
             guard take(0x3a) else { throw RawJSONValidationError.invalidInput }
-            try value(depth: depth)
+            let item = try value(depth: depth)
+            members.append((key, item))
             whitespace()
-            if take(0x7d) { return }
+            if take(0x7d) { return .object(members) }
             guard take(0x2c) else { throw RawJSONValidationError.invalidInput }
         } while true
     }
 
-    mutating func array(depth: Int) throws {
+    mutating func array(depth: Int) throws -> RawJSONValue {
         guard depth <= maximumDepth else { throw RawJSONValidationError.limitExceeded }
         index += 1
         whitespace()
-        if take(0x5d) { return }
+        if take(0x5d) { return .array([]) }
+        var items: [RawJSONValue] = []
         repeat {
-            try value(depth: depth)
+            items.append(try value(depth: depth))
             whitespace()
-            if take(0x5d) { return }
+            if take(0x5d) { return .array(items) }
             guard take(0x2c) else { throw RawJSONValidationError.invalidInput }
         } while true
     }
