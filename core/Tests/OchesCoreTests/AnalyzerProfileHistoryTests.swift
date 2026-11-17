@@ -3,6 +3,38 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerProfileHistoryTests: XCTestCase {
+    func testProfileRepositoryRoundTripsAndRejectsWrongBindings() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let root = dir.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("synthetic project contents".utf8).write(to: root.appendingPathComponent("main.swift"))
+        let collection = try AnalyzerSafeRoot(rootPath: root.path).collectEvidence()
+        let draft = try AnalyzerProfileDraft.build(profileID: "p", workspaceRef: "ws", analyzerVersion: "1", analyzedAt: Date(timeIntervalSince1970: 100), roots: ["private/root"], exclusions: [], userConstraints: ["private constraint"], collection: collection)
+        let store = try SQLiteStore(path: dir.appendingPathComponent("db").path, workspaceID: "ws", initialStoreGeneration: "gen")
+        let repository = AnalyzerProfileRepository(store: store)
+        let result = try repository.save(draft, actorID: "actor", requestID: "r", expectedRevision: nil, nowEpochSeconds: 101)
+        let restored = try repository.load(profileID: "p", revision: result.revision)
+        XCTAssertEqual(restored.evidence.first?.sha256, draft.evidence.first?.sha256)
+        XCTAssertEqual(restored.userConstraints, ["private constraint"])
+        XCTAssertEqual(restored.analyzedAt, draft.analyzedAt)
+        XCTAssertTrue(try repository.save(draft, actorID: "actor", requestID: "r", expectedRevision: nil, nowEpochSeconds: 101).idempotentReplay)
+        XCTAssertThrowsError(try repository.load(profileID: "other", revision: result.revision))
+        let events = try store.listEvents(workspaceID: "ws", after: EventCursor(workspaceID: "ws", storeGeneration: "gen", sequence: 0))
+        XCTAssertEqual(events.events.first?.payloadJSON, "{}")
+        XCTAssertFalse(String(reflecting: events.events).contains("private constraint"))
+        XCTAssertFalse(String(reflecting: restored).contains("synthetic project contents"))
+        try store.executeRawForTesting("UPDATE profile_revisions SET payload_json = '{\"schemaVersion\":2,\"profile\":{}}' WHERE object_id = 'arc02/profile/p'")
+        XCTAssertThrowsError(try repository.load(profileID: "p", revision: result.revision)) {
+            guard case .unavailable = $0 as? StorageError else { return XCTFail("unsupported schema must remain unavailable") }
+        }
+        try store.executeRawForTesting("UPDATE profile_revisions SET payload_json = '{\"schemaVersion\":1,\"schemaVersion\":1,\"profile\":{}}' WHERE object_id = 'arc02/profile/p'")
+        XCTAssertThrowsError(try repository.load(profileID: "p", revision: result.revision)) {
+            guard case .corrupt = $0 as? StorageError else { return XCTFail("duplicate keys must be rejected") }
+        }
+    }
+
     func testCrashDuringProfileCommitDoesNotPublishPartialRevision() throws {
         if let path = ProcessInfo.processInfo.environment["OCHES_PROFILE_CRASH_DB"],
            let name = ProcessInfo.processInfo.environment["OCHES_PROFILE_CRASH_STAGE"],
