@@ -31,5 +31,10 @@ jobs:
           flutter analyze
           flutter test
           flutter build macos --debug
+      - name: Validate draft schemas
+        run: |
+          python3 -m venv "$RUNNER_TEMP/oches-schema-venv"
+          "$RUNNER_TEMP/oches-schema-venv/bin/pip" install -r core/contracts/tests/requirements.txt
+          "$RUNNER_TEMP/oches-schema-venv/bin/python" -m unittest discover -s core/contracts/tests -v
       - name: Test Core
         run: swift test --package-path core
