@@ -27,6 +27,13 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testRejectsUnboundedCallerLimits() {
+        let input = Data("{}".utf8)
+        XCTAssertThrowsError(try validateUniqueJSONKeys(input, maximumBytes: .max, maximumDepth: 8, maximumStringBytes: 64))
+        XCTAssertThrowsError(try validateUniqueJSONKeys(input, maximumBytes: 1024, maximumDepth: .max, maximumStringBytes: 64))
+        XCTAssertThrowsError(try validateUniqueJSONKeys(input, maximumBytes: 1024, maximumDepth: 8, maximumStringBytes: .max))
+    }
+
     func testRejectsLimitsBeforeParsing() throws {
         XCTAssertThrowsError(try validateUniqueJSONKeys(Data("{}".utf8), maximumBytes: 1, maximumDepth: 3, maximumStringBytes: 64))
         XCTAssertThrowsError(try check(Data(#"{"a":[[[0]]]}"#.utf8)))

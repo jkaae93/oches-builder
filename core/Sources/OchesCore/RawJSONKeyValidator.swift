@@ -27,7 +27,11 @@ public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth
 
 // Internal reference-vector entry point; never use in place of the wire policy.
 func parseJSON(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int, wirePolicy: Bool) throws -> RawJSONValue {
-    guard maximumBytes > 0, maximumDepth > 0, maximumStringBytes > 0 else { throw RawJSONValidationError.invalidInput }
+    // Hard safety ceilings are provisional implementation limits, not wire
+    // contract values. A caller cannot disable bounds by supplying Int.max.
+    guard maximumBytes > 0, maximumBytes <= 1_048_576,
+          maximumDepth > 0, maximumDepth <= 128,
+          maximumStringBytes > 0, maximumStringBytes <= 262_144 else { throw RawJSONValidationError.invalidInput }
     guard data.count <= maximumBytes else { throw RawJSONValidationError.limitExceeded }
     guard String(data: data, encoding: .utf8) != nil else { throw RawJSONValidationError.invalidInput }
     var scanner = KeyScanner(bytes: Array(data), maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes, wirePolicy: wirePolicy)
