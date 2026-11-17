@@ -5,3 +5,5 @@ These schemas are review proposals, not evidence of an operational protocol. `re
 Raw input must be checked before decoding for duplicate keys, bounds and representability. The current Swift wire-number restrictions are provisional and stricter than general JCS. Unknown or unsupported required semantics must block changes. Transport authentication, permissions, approvals and storage belong to subsequent issues.
 
 To independently validate the draft schemas, install `core/contracts/tests/requirements.txt` in an isolated Python environment and run `python -m unittest discover -s core/contracts/tests -v`. These checks do not validate authorization or prove implementation/schema equivalence.
+
+The proposed `revisionRef` describes ARC-10 restore-generation references only. Other owners may have different generation policies, and immutable version responses require operation-specific schemas; neither is defined by this draft. See `INTERFACE_CONTRACT_V1.md` and `CONTRACT_FINALIZATION_PROPOSAL.md` §3.2.

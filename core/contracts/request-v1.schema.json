@@ -79,7 +79,8 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "description": "Draft ARC-10 restore-generation reference only. Other owners and immutable versions require separately reviewed operation-specific schemas."
     }
   }
 }
