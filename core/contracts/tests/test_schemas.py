@@ -39,6 +39,10 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(validator.is_valid({"requestId": "r", "result": {"error": error}}))
         self.assertFalse(validator.is_valid({"requestId": "r", "result": {"ok": {}, "error": error}}))
         self.assertFalse(validator.is_valid({"requestId": "r", "result": {}}))
+        revision = {"objectId": "o", "storeGeneration": "g", "revision": "42"}
+        self.assertTrue(validator.is_valid({"requestId": "r", "result": {"ok": {}}, "revision": revision}))
+        self.assertFalse(validator.is_valid({"requestId": "r", "result": {"ok": {}}, "revision": {**revision, "storeGeneration": ""}}))
+        self.assertFalse(validator.is_valid({"requestId": "r", "result": {"ok": {}}, "revision": None}))
 
     def test_event_sequence(self):
         validator = schema("event")
