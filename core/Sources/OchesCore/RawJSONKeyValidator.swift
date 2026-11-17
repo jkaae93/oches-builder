@@ -4,10 +4,11 @@ public enum RawJSONValidationError: Error, Equatable {
     case invalidInput
     case duplicateKey
     case limitExceeded
+    case unsafeNumber
 }
 
 /// Detects duplicate object keys before Foundation can discard them. This is not
-/// a complete wire validator: numeric and schema checks are
+/// a complete wire validator: schema and JCS checks are
 /// still required before any request can be dispatched.
 public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws {
     guard maximumBytes > 0, maximumDepth > 0, maximumStringBytes > 0 else { throw RawJSONValidationError.invalidInput }
@@ -43,7 +44,18 @@ private struct KeyScanner {
         case 0x5b: try array(depth: depth + 1)
         case 0x22: _ = try string()
         default:
+            let start = index
             while index < bytes.count && ![0x2c, 0x5d, 0x7d, 0x20, 0x0a, 0x0d, 0x09].contains(bytes[index]) { index += 1 }
+            guard start < index else { throw RawJSONValidationError.invalidInput }
+            let token = String(decoding: bytes[start..<index], as: UTF8.self)
+            if token.first == "-" || token.first?.isNumber == true {
+                guard let number = Double(token), number.isFinite else { throw RawJSONValidationError.unsafeNumber }
+                // Check the original decimal value too: Double alone rounds large integers.
+                guard let decimal = Decimal(string: token, locale: Locale(identifier: "en_US_POSIX")),
+                      !decimal.isNaN else { throw RawJSONValidationError.unsafeNumber }
+                let limit = Decimal(9_007_199_254_740_991 as Int64)
+                guard decimal <= limit && decimal >= -limit else { throw RawJSONValidationError.unsafeNumber }
+            }
         }
     }
 
