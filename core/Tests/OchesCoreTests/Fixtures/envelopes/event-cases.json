@@ -1,0 +1,10 @@
+[
+  {"name":"valid", "valid":true, "event":{"eventId":"e","sourceId":"s","sequence":"0","kind":"k","payload":{}}},
+  {"name":"large sequence", "valid":true, "event":{"eventId":"e","sourceId":"s","sequence":"9007199254740993","kind":"k","payload":{}}},
+  {"name":"missing source", "valid":false, "event":{"eventId":"e","sequence":"0","kind":"k","payload":{}}},
+  {"name":"null sequence", "valid":false, "event":{"eventId":"e","sourceId":"s","sequence":null,"kind":"k","payload":{}}},
+  {"name":"leading zero", "valid":false, "event":{"eventId":"e","sourceId":"s","sequence":"01","kind":"k","payload":{}}},
+  {"name":"newline sequence", "valid":false, "event":{"eventId":"e","sourceId":"s","sequence":"1\n","kind":"k","payload":{}}},
+  {"name":"null payload", "valid":false, "event":{"eventId":"e","sourceId":"s","sequence":"0","kind":"k","payload":null}},
+  {"name":"unknown field", "valid":false, "event":{"eventId":"e","sourceId":"s","sequence":"0","kind":"k","payload":{},"cursor":"c"}}
+]

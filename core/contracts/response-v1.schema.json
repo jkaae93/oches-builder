@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oches.local/contracts/response-v1.schema.json",
+  "title": "Core response envelope version 1 (draft)",
+  "description": "Structural draft; safe error text, operation-specific results and authorization require separate validation.",
+  "type": "object",
+  "required": [
+    "requestId",
+    "result"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "ok"
+          ],
+          "properties": {
+            "ok": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/error"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "revision": {
+      "$ref": "#/$defs/revisionRef"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "action"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_INPUT",
+            "DENIED",
+            "APPROVAL_REQUIRED",
+            "CONFLICT",
+            "STALE",
+            "UNSUPPORTED",
+            "UNKNOWN",
+            "INDETERMINATE",
+            "UNAVAILABLE",
+            "CURSOR_EXPIRED",
+            "IDEMPOTENCY_EXPIRED"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "revisionRef": {
+      "type": "object",
+      "required": [
+        "objectId",
+        "storeGeneration",
+        "revision"
+      ],
+      "properties": {
+        "objectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storeGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "not": {
+            "pattern": "[^0-9]"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Draft ARC-10 restore-generation reference only. Other owners and immutable versions require separately reviewed operation-specific schemas."
+    }
+  }
+}

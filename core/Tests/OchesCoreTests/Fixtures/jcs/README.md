@@ -1,0 +1,1 @@
+Vectors copied from https://github.com/cyberphone/json-canonicalization/tree/32a48195b9b20fe67b1795e39e4509f14d860b45/testdata, copyright Anders Rundgren, Apache-2.0; see LICENSE. `arrays` has a top-level array and `values` exceeds the provisional wire numeric limit; the independent vector test uses an internal unrestricted parser, not the wire entry point.

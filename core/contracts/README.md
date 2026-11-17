@@ -1,0 +1,9 @@
+# Draft wire schemas
+
+These schemas are review proposals, not evidence of an operational protocol. `request-v1` defines common structural fields; `response-v1` uses exactly one success or error result; `event-v1` proposes an event ID, source and source-local sequence. The exact event field names and decimal string encoding require review against ARC-06, ARC-10 and ARC-11 before they are frozen. A cursor is not an event sequence: snapshot state and durable cursor must come from one consistent storage read, which is not implemented here. Schema validation cannot establish authentication, authorization, event durability, request idempotency, operation-specific semantics or safety of error text.
+
+Raw input must be checked before decoding for duplicate keys, bounds and representability. The current Swift wire-number restrictions are provisional and stricter than general JCS. Unknown or unsupported required semantics must block changes. Transport authentication, permissions, approvals and storage belong to subsequent issues.
+
+To independently validate the draft schemas, install `core/contracts/tests/requirements.txt` in an isolated Python environment and run `python -m unittest discover -s core/contracts/tests -v`. These checks do not validate authorization or prove implementation/schema equivalence.
+
+The proposed `revisionRef` describes ARC-10 restore-generation references only. Other owners may have different generation policies, and immutable version responses require operation-specific schemas; neither is defined by this draft. See `INTERFACE_CONTRACT_V1.md` and `CONTRACT_FINALIZATION_PROPOSAL.md` §3.2.

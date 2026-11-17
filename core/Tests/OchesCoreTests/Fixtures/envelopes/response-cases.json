@@ -1,0 +1,10 @@
+[
+  {"name":"success", "valid":true, "response":{"requestId":"r","result":{"ok":{}}}},
+  {"name":"error", "valid":true, "response":{"requestId":"r","result":{"error":{"code":"UNAVAILABLE","message":"","action":""}}}},
+  {"name":"with revision", "valid":true, "response":{"requestId":"r","result":{"ok":{}},"revision":{"objectId":"o","storeGeneration":"g","revision":"1"}}},
+  {"name":"both results", "valid":false, "response":{"requestId":"r","result":{"ok":{},"error":{}}}},
+  {"name":"missing result", "valid":false, "response":{"requestId":"r"}},
+  {"name":"unknown code", "valid":false, "response":{"requestId":"r","result":{"error":{"code":"MYSTERY","message":"","action":""}}}},
+  {"name":"null revision", "valid":false, "response":{"requestId":"r","result":{"ok":{}},"revision":null}},
+  {"name":"unknown field", "valid":false, "response":{"requestId":"r","result":{"ok":{}},"unknown":true}}
+]
