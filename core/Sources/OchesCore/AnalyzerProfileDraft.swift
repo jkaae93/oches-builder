@@ -4,6 +4,10 @@ import Foundation
 /// is assigned only by the storage transaction that actually commits a profile.
 struct AnalyzerProfileDraft {
     enum State: String { case complete, partial, cancelled }
+    enum EvidenceComparison: Equatable {
+        case changed(paths: [String])
+        case indeterminate
+    }
     struct Evidence {
         let relativePath: String
         let size: Int64
@@ -40,6 +44,32 @@ struct AnalyzerProfileDraft {
     let limitsReached: [String]
     let userConstraints: [String]
     let state: State
+
+    /// Detects changes to previously read files present in both snapshots.
+    /// The caller must first establish that both snapshots use the same
+    /// authorized root and scope; this internal comparison cannot verify that.
+    /// Matching evidence cannot establish freshness: scope identity, unread
+    /// files and concurrent changes still require a verified reanalysis flow.
+    func compareReadEvidence(with collection: AnalyzerSafeRoot.EvidenceCollection) -> EvidenceComparison {
+        var current: [Data: AnalyzerSafeRoot.FileEvidence] = [:]
+        for file in collection.files {
+            let key = Data(file.relativePath.utf8)
+            guard current[key] == nil else { return .indeterminate }
+            current[key] = file
+        }
+        var seen = Set<Data>()
+        var changed: [String] = []
+        for old in evidence {
+            let key = Data(old.relativePath.utf8)
+            guard seen.insert(key).inserted else { return .indeterminate }
+            guard let new = current[key] else { continue }
+            if old.size != new.size || old.modifiedSeconds != new.modifiedSeconds ||
+                old.modifiedNanoseconds != new.modifiedNanoseconds || old.sha256 != new.sha256 {
+                changed.append(old.relativePath)
+            }
+        }
+        return changed.isEmpty ? .indeterminate : .changed(paths: changed.sorted())
+    }
 
     /// Does not perform I/O, decide permissions, transmit data, or persist.
     static func build(profileID: String, workspaceRef: String, analyzerVersion: String,

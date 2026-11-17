@@ -3,6 +3,23 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerProfileDraftTests: XCTestCase {
+    func testEvidenceComparisonDetectsChangesButNeverClaimsFreshness() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("main.swift")
+        try Data("first".utf8).write(to: file)
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let initial = try scanner.collectEvidence()
+        let draft = try AnalyzerProfileDraft.build(profileID: "p", workspaceRef: "w", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], exclusions: [], userConstraints: [], collection: initial)
+        XCTAssertEqual(draft.compareReadEvidence(with: try scanner.collectEvidence()), .indeterminate)
+        try Data("other".utf8).write(to: file)
+        XCTAssertEqual(draft.compareReadEvidence(with: try scanner.collectEvidence()), .changed(paths: ["main.swift"]))
+        try FileManager.default.removeItem(at: file)
+        XCTAssertEqual(draft.compareReadEvidence(with: try scanner.collectEvidence()), .indeterminate)
+        XCTAssertEqual(draft.compareReadEvidence(with: try scanner.collectEvidence(isCancelled: { true })), .indeterminate)
+    }
+
     func testEvidenceAndPartialStateContainNoProjectContents() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
