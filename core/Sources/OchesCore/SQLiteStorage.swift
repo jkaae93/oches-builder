@@ -195,7 +195,7 @@ public struct TransitionResult: Sendable, Equatable {
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 public final class SQLiteStore: @unchecked Sendable {
-    public static let currentSchemaVersion: Int32 = 1
+    public static let currentSchemaVersion: Int32 = 2
 
     public let path: String
     public let workspaceID: String
@@ -412,6 +412,64 @@ public final class SQLiteStore: @unchecked Sendable {
     }
 
     public func commitTransition(_ request: TransitionRequest) throws -> TransitionResult {
+        try commitTransition(request, preserveProfileRevision: false)
+    }
+
+    /// Internal only: authorization and validated Profile serialization must be
+    /// performed by the future product entry point before this is reachable.
+    func commitProfileTransition(_ request: TransitionRequest) throws -> TransitionResult {
+        guard request.ownerModule == "ARC-02", request.operation == "profile.commit",
+              !request.objectID.utf8.contains(0), !request.workspaceID.utf8.contains(0) else { throw StorageError.invalidInput }
+        return try commitTransition(request, preserveProfileRevision: true)
+    }
+
+    /// Internal retrieval, subject to a separate authenticated authorization gate.
+    func readProfileRevision(workspaceID: String, revision: RevisionRef) throws -> String {
+        guard workspaceID.utf8.elementsEqual(self.workspaceID.utf8) else { throw StorageError.denied }
+        guard let number = Int64(revision.revision), number > 0, !revision.objectID.isEmpty,
+              !revision.objectID.utf8.contains(0) else { throw StorageError.invalidInput }
+        lock.lock()
+        defer { lock.unlock() }
+        try ensureAvailableForRead()
+        try execute("BEGIN")
+        do {
+            guard revision.storeGeneration.utf8.elementsEqual((try queryStoreGeneration()).utf8) else { throw StorageError.staleGeneration }
+            try ensureProfileNotDeleted(workspaceID: workspaceID, objectID: revision.objectID)
+            let stmt = try prepare("SELECT payload_json FROM profile_revisions WHERE workspace_id = ? AND object_id = ? AND revision = ?")
+            defer { sqlite3_finalize(stmt) }
+            try bindText(stmt, index: 1, value: workspaceID)
+            try bindText(stmt, index: 2, value: revision.objectID)
+            sqlite3_bind_int64(stmt, 3, number)
+            let rc = sqlite3_step(stmt)
+            guard rc == SQLITE_ROW else {
+                if rc == SQLITE_DONE { throw StorageError.notFound }
+                throw mapSQLiteError(rc)
+            }
+            let payload = columnText(stmt, index: 0)
+            try execute("COMMIT")
+            return payload
+        } catch {
+            _ = try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    private func ensureProfileNotDeleted(workspaceID: String, objectID: String) throws {
+        let exists = try prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'deletion_requests'")
+        defer { sqlite3_finalize(exists) }
+        let existsRC = sqlite3_step(exists)
+        guard existsRC == SQLITE_ROW || existsRC == SQLITE_DONE else { throw mapSQLiteError(existsRC) }
+        if existsRC == SQLITE_DONE { return }
+        let stmt = try prepare("SELECT 1 FROM deletion_requests WHERE workspace_id = ? AND target_id = ? LIMIT 1")
+        defer { sqlite3_finalize(stmt) }
+        try bindText(stmt, index: 1, value: workspaceID)
+        try bindText(stmt, index: 2, value: objectID)
+        let rc = sqlite3_step(stmt)
+        if rc == SQLITE_ROW { throw StorageError.denied }
+        guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+    }
+
+    private func commitTransition(_ request: TransitionRequest, preserveProfileRevision: Bool) throws -> TransitionResult {
         guard request.workspaceID == workspaceID else { throw StorageError.denied }
         guard !request.actorID.isEmpty,
               !request.operation.isEmpty,
@@ -422,7 +480,7 @@ public final class SQLiteStore: @unchecked Sendable {
             throw StorageError.invalidInput
         }
 
-        let digestInput: RawJSONValue = .object([
+        var digestFields: [(String, RawJSONValue)] = [
             ("operation", .string(request.operation)),
             ("objectId", .string(request.objectID)),
             ("expectedRevision", request.expectedRevision.map {
@@ -433,7 +491,9 @@ public final class SQLiteStore: @unchecked Sendable {
                 ])
             } ?? .null),
             ("normalizedInput", request.normalizedInput),
-        ])
+        ]
+        if preserveProfileRevision { digestFields.append(("profilePayload", .string(request.nextStateJSON))) }
+        let digestInput: RawJSONValue = .object(digestFields)
         let inputDigestData: Data
         do {
             inputDigestData = try canonicalSHA256(digestInput)
@@ -449,6 +509,7 @@ public final class SQLiteStore: @unchecked Sendable {
         try execute("BEGIN IMMEDIATE")
         do {
             let currentGen = try queryStoreGeneration()
+            if preserveProfileRevision { try ensureProfileNotDeleted(workspaceID: request.workspaceID, objectID: request.objectID) }
 
             if let existing = try queryIdempotencyRecord(
                 actorID: request.actorID,
@@ -553,6 +614,18 @@ public final class SQLiteStore: @unchecked Sendable {
                 try bindText(stmt, index: 5, value: request.nextStateJSON)
                 sqlite3_bind_int64(stmt, 6, request.nowEpochSeconds)
                 let rc = sqlite3_step(stmt)
+                guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+            }
+
+            if preserveProfileRevision {
+                let history = try prepare("INSERT INTO profile_revisions (workspace_id, object_id, revision, payload_json, committed_at) VALUES (?, ?, ?, ?, ?)")
+                defer { sqlite3_finalize(history) }
+                try bindText(history, index: 1, value: request.workspaceID)
+                try bindText(history, index: 2, value: request.objectID)
+                sqlite3_bind_int64(history, 3, Int64(bitPattern: newRevision))
+                try bindText(history, index: 4, value: request.nextStateJSON)
+                sqlite3_bind_int64(history, 5, request.nowEpochSeconds)
+                let rc = sqlite3_step(history)
                 guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
             }
 
@@ -815,8 +888,24 @@ public final class SQLiteStore: @unchecked Sendable {
                     PRIMARY KEY(actor_id, workspace_id, operation, request_id),
                     FOREIGN KEY(workspace_id) REFERENCES workspace_meta(workspace_id)
                 );
+                CREATE TABLE IF NOT EXISTS profile_revisions (
+                    workspace_id TEXT NOT NULL,
+                    object_id TEXT NOT NULL,
+                    revision INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    committed_at INTEGER NOT NULL,
+                    PRIMARY KEY (workspace_id, object_id, revision),
+                    FOREIGN KEY(workspace_id) REFERENCES workspace_meta(workspace_id)
+                );
                 """
             )
+            if let existingMeta, existingMeta.schemaVersion < Self.currentSchemaVersion {
+                let migration = try prepare("UPDATE workspace_meta SET schema_version = ? WHERE workspace_id = ?")
+                defer { sqlite3_finalize(migration) }
+                sqlite3_bind_int(migration, 1, Self.currentSchemaVersion)
+                try bindText(migration, index: 2, value: workspaceID)
+                guard sqlite3_step(migration) == SQLITE_DONE else { throw StorageError.invalidMigration("schema version update failed") }
+            }
             let retStmt = try prepare(
                 "INSERT OR IGNORE INTO event_retention_meta (workspace_id, min_retained_seq) VALUES (?, 0)"
             )
