@@ -20,6 +20,26 @@ struct AnalyzerScopeCandidate {
     let limits: Limits
     let digest: String
 
+    /// Internal mechanics only. Calling this does not verify approval. A
+    /// product gate must authorize this exact candidate before invoking it.
+    func collectCandidateEvidence(using scanner: AnalyzerSafeRoot, isCancelled: () -> Bool = { false }) throws -> AnalyzerSafeRoot.EvidenceCollection {
+        guard try scanner.rootIdentity() == root else { throw AnalyzerSafeRoot.AccessError.changedDuringRead }
+        return try scanner.collectEvidence(userExcludedPaths: excludedPaths, exceptionPaths: exceptionPaths,
+            maximumEntries: limits.maximumEntries, maximumTotalBytes: limits.maximumTotalBytes,
+            maximumFileBytes: limits.maximumFileBytes, maximumSeconds: TimeInterval(limits.maximumSeconds),
+            isCancelled: isCancelled)
+    }
+
+    func buildCandidateProfile(using scanner: AnalyzerSafeRoot, profileID: String, analyzerVersion: String,
+                               analyzedAt: Date, roots: [String], userConstraints: [String],
+                               isCancelled: () -> Bool = { false }) throws -> AnalyzerProfileDraft {
+        let collection = try collectCandidateEvidence(using: scanner, isCancelled: isCancelled)
+        return try AnalyzerProfileDraft.build(profileID: profileID, workspaceRef: workspaceID,
+            analyzerVersion: analyzerVersion, analyzedAt: analyzedAt, roots: roots,
+            exclusions: excludedPaths, userConstraints: userConstraints, collection: collection,
+            scopeDigest: digest, exceptionPaths: exceptionPaths)
+    }
+
     init(workspaceID: String, scanner: AnalyzerSafeRoot, policyVersion: String,
          excludedPaths: [String], exceptionPaths: [String] = [], limits: Limits) throws {
         guard !workspaceID.isEmpty, !workspaceID.utf8.contains(0),

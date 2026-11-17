@@ -2,6 +2,14 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerExclusionsTests: XCTestCase {
+    func testUserRulesPreserveDistinctUnicodeByteSequences() throws {
+        let composed = "\u{00e9}"
+        let decomposed = "e\u{0301}"
+        XCTAssertEqual(try AnalyzerExclusions.classify(relativePath: composed, userExcludedPaths: [composed, decomposed]), .userRule)
+        XCTAssertEqual(try AnalyzerExclusions.classify(relativePath: decomposed, userExcludedPaths: [composed, decomposed]), .userRule)
+        XCTAssertNil(try AnalyzerExclusions.classify(relativePath: decomposed, userExcludedPaths: [composed]))
+    }
+
     func testDefaultsCoverRequiredCategoriesAndNestedPaths() throws {
         let cases: [(String, AnalyzerExclusion)] = [
             ("a/.env.local", .credentials), (".ssh/config", .credentials), ("a/id_ed25519", .credentials), ("a/key.pem", .credentials),

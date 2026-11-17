@@ -34,5 +34,36 @@ final class AnalyzerScopeCandidateTests: XCTestCase {
         let replacement = try AnalyzerSafeRoot(rootPath: root.path)
         XCTAssertNotEqual(initial.digest, try scope("ws", "1", ["a", "b"], replacement, limits).digest)
         XCTAssertEqual(initial.root, try scanner.rootIdentity())
+        XCTAssertThrowsError(try initial.collectCandidateEvidence(using: replacement)) {
+            XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .changedDuringRead)
+        }
+    }
+
+    func testCandidateAppliesItsExactRulesAndLimitsToCollection() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("allow".utf8).write(to: root.appendingPathComponent(".env"))
+        try Data("other".utf8).write(to: root.appendingPathComponent("excluded"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let limits = AnalyzerScopeCandidate.Limits(maximumEntries: 100, maximumTotalBytes: 100, maximumFileBytes: 4, maximumSeconds: 10)
+        let scope = try AnalyzerScopeCandidate(workspaceID: "ws", scanner: scanner, policyVersion: "1", excludedPaths: ["excluded"], exceptionPaths: [".env"], limits: limits)
+        let result = try scope.collectCandidateEvidence(using: scanner)
+        XCTAssertTrue(result.files.isEmpty)
+        XCTAssertTrue(result.partialReasons.contains("file_limit"))
+        XCTAssertEqual(result.unreadReasons[".env"], "file_limit")
+        XCTAssertTrue(result.preview.entries.contains { $0.relativePath == "excluded" && $0.exclusion == .userRule })
+        let draft = try scope.buildCandidateProfile(using: scanner, profileID: "p", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], userConstraints: [])
+        XCTAssertEqual(draft.scopeDigest, scope.digest)
+        XCTAssertEqual(draft.exceptionPaths, [".env"])
+        XCTAssertEqual(draft.exclusions, ["excluded"])
+        let storeDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: storeDir) }
+        let store = try SQLiteStore(path: storeDir.appendingPathComponent("db").path, workspaceID: "ws")
+        let repo = AnalyzerProfileRepository(store: store)
+        let saved = try repo.save(draft, actorID: "actor", requestID: "r", expectedRevision: nil, nowEpochSeconds: 1)
+        XCTAssertEqual(try repo.load(profileID: "p", revision: saved.revision).scopeDigest, scope.digest)
+        XCTAssertEqual(try repo.load(profileID: "p", revision: saved.revision).exceptionPaths, [".env"])
     }
 }

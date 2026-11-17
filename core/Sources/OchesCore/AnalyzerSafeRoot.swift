@@ -46,11 +46,11 @@ final class AnalyzerSafeRoot {
     }
 
     /// Internal primitive. No bytes may be logged or sent to a provider.
-    func read(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> Data {
+    func read(relativePath: String, maximumBytes: Int, userExcludedPaths: [String] = [], beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> Data {
         try readEvidence(relativePath: relativePath, maximumBytes: maximumBytes, userExcludedPaths: userExcludedPaths, beforeFinalOpen: beforeFinalOpen, beforeFinalStat: beforeFinalStat).bytes
     }
 
-    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil, onBytesRead: ((Int) -> Void)? = nil, shouldStop: () -> Bool = { false }) throws -> ReadEvidence {
+    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: [String] = [], exceptionPaths: [String] = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil, onBytesRead: ((Int) -> Void)? = nil, shouldStop: () -> Bool = { false }) throws -> ReadEvidence {
         guard maximumBytes > 0, maximumBytes <= 1_048_576,
               !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0) else { throw AccessError.invalidPath }
         try AnalyzerExclusions.validateExceptions(exceptionPaths)
@@ -125,7 +125,7 @@ extension AnalyzerSafeRoot {
 
     /// Internal metadata-only traversal. No content is read and no link followed.
     /// A caller still needs a verified workspace and policy before presenting it.
-    func preview(userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> Preview {
+    func preview(userExcludedPaths: [String] = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> Preview {
         guard maximumEntries > 0, maximumEntries <= 10_000, maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
         // Validate every user rule even for an empty directory.
         _ = try AnalyzerExclusions.classify(relativePath: "validation", userExcludedPaths: userExcludedPaths)
@@ -229,7 +229,7 @@ extension AnalyzerSafeRoot {
 
     /// Internal local-only candidate; requires verified approval and storage
     /// integration before it can be used as a product analysis operation.
-    func collectEvidence(userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000,
+    func collectEvidence(userExcludedPaths: [String] = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000,
                          maximumTotalBytes: Int = 104_857_600, maximumFileBytes: Int = 1_048_576,
                          maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> EvidenceCollection {
         guard maximumTotalBytes > 0, maximumTotalBytes <= 104_857_600,

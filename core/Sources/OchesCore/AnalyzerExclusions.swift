@@ -33,7 +33,7 @@ struct AnalyzerExclusions {
     private static let bundleExtensions: Set<String> = ["app", "framework", "bundle", "xcassets", "xcodeproj", "xcworkspace"]
 
     /// User rules are exact relative paths or subtree roots, never globs.
-    static func classify(relativePath: String, userExcludedPaths: Set<String> = []) throws -> AnalyzerExclusion? {
+    static func classify(relativePath: String, userExcludedPaths: [String] = []) throws -> AnalyzerExclusion? {
         let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0), !parts.isEmpty,
               parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { throw AnalyzerSafeRoot.AccessError.invalidPath }
