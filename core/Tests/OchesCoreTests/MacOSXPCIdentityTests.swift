@@ -165,4 +165,155 @@ final class MacOSXPCIdentityTests: XCTestCase {
             XCTAssertEqual(error as? KeyStoreError, .keyRevoked)
         }
     }
+
+    func testBootstrapRestrictionRiskMutationGateAndKeyRotationRevocation() throws {
+        let dbPath = tempDir.appendingPathComponent("identity.db").path
+        let store = try SQLiteStore(path: dbPath, workspaceID: "ws-1", initialStoreGeneration: "gen-1")
+        let keyStore = ScopedProtectedKeyStore()
+        let registry = try ClientIdentityAndKeyRegistry(store: store, keyStore: keyStore)
+
+        let bootstrap = CoreBootstrapDescriptor(
+            coreID: "core-1",
+            protocolMajor: 1,
+            minimumMinor: 0,
+            maximumMinor: 0,
+            coreSigningPublicKeyID: "core-sign-1",
+            coreNoisePublicKeyID: "core-noise-1",
+            distributionSignedPeerVerified: false
+        )
+        XCTAssertNil(bootstrap.inspectPreAuthRequest(operation: "hello"))
+        XCTAssertEqual(bootstrap.inspectPreAuthRequest(operation: "command"), SafeWireError(code: .denied, detail: "AUTH_FAILED"))
+        XCTAssertEqual(bootstrap.inspectPreAuthRequest(operation: "observe"), SafeWireError(code: .denied, detail: "AUTH_FAILED"))
+        XCTAssertEqual(bootstrap.inspectPreAuthRequest(operation: "snapshot"), SafeWireError(code: .denied, detail: "AUTH_FAILED"))
+
+        let k1 = try keyStore.generateSigningKey(keyID: "client-sign-1")
+        let n1 = try keyStore.generateNoiseStaticKey(keyID: "client-noise-1")
+        try registry.registerClient(RegisteredClientRecord(
+            clientID: "desktop-1",
+            signingKeyID: k1.keyID,
+            signingPublicKeyBase64: k1.publicKeyBytes.base64EncodedString(),
+            noiseKeyID: n1.keyID,
+            noisePublicKeyBase64: n1.publicKeyBytes.base64EncodedString(),
+            trustLevel: .platformBound,
+            teamID: "TEAM123456",
+            signingIdentifier: "com.oches.desktop",
+            allowedWorkspaces: ["ws-1"],
+            allowedScopes: ["workspace:read", "run:request", "approval:decide"],
+            status: .active,
+            policyVersion: 1,
+            createdAt: 1000,
+            expiresAt: 2000,
+            revokedAt: nil
+        ))
+
+        // Authenticate without distribution-signed positive control -> risk mutation gate blocks fail-closed
+        let c1 = try registry.issueChallenge(clientID: "desktop-1", keyID: k1.keyID, connectionID: "conn-1", nowEpochSeconds: 1000)
+        let sig1 = try keyStore.sign(keyID: k1.keyID, payload: Data("desktop-1|\(k1.keyID)|conn-1|\(c1.nonce)".utf8))
+        let unverifiedSess = try registry.authenticateConnection(
+            challengeID: c1.challengeID,
+            clientID: "desktop-1",
+            keyID: k1.keyID,
+            connectionID: "conn-1",
+            signature: sig1,
+            distributionSignedPeerVerified: false,
+            nowEpochSeconds: 1001
+        )
+        XCTAssertThrowsError(try registry.verifyRiskMutationGate(sessionID: unverifiedSess.sessionID)) { error in
+            XCTAssertEqual(error as? RegistryLifecycleError, .distributionPositiveControlRequired)
+        }
+        // Replaying the same single-use challenge fails
+        XCTAssertThrowsError(try registry.authenticateConnection(
+            challengeID: c1.challengeID,
+            clientID: "desktop-1",
+            keyID: k1.keyID,
+            connectionID: "conn-1",
+            signature: sig1,
+            distributionSignedPeerVerified: true,
+            nowEpochSeconds: 1002
+        )) { error in
+            XCTAssertEqual(error as? RegistryLifecycleError, .challengeReplayOrExpired)
+        }
+
+        // Authenticate WITH verified distribution-signed positive control -> risk gate passes
+        let c2 = try registry.issueChallenge(clientID: "desktop-1", keyID: k1.keyID, connectionID: "conn-2", nowEpochSeconds: 1002)
+        let sig2 = try keyStore.sign(keyID: k1.keyID, payload: Data("desktop-1|\(k1.keyID)|conn-2|\(c2.nonce)".utf8))
+        let verifiedSess = try registry.authenticateConnection(
+            challengeID: c2.challengeID,
+            clientID: "desktop-1",
+            keyID: k1.keyID,
+            connectionID: "conn-2",
+            signature: sig2,
+            distributionSignedPeerVerified: true,
+            nowEpochSeconds: 1003
+        )
+        try registry.verifyRiskMutationGate(sessionID: verifiedSess.sessionID)
+        XCTAssertTrue(try registry.isSessionActive(sessionID: verifiedSess.sessionID))
+
+        // Interrupted key rotation (missing Desktop UI confirmation) revokes old key and does NOT activate new key
+        let k2 = try keyStore.generateSigningKey(keyID: "client-sign-2")
+        let n2 = try keyStore.generateNoiseStaticKey(keyID: "client-noise-2")
+        let rotTranscript = Data("rotate|desktop-1|\(k2.keyID)".utf8)
+        let k2Sig = try keyStore.sign(keyID: k2.keyID, payload: rotTranscript)
+
+        XCTAssertThrowsError(try registry.rotateClientKey(
+            clientID: "desktop-1",
+            newSigningKeyID: k2.keyID,
+            newSigningPublicKeyBase64: k2.publicKeyBytes.base64EncodedString(),
+            newNoiseKeyID: n2.keyID,
+            newNoisePublicKeyBase64: n2.publicKeyBytes.base64EncodedString(),
+            trustedDesktopConfirmed: false,
+            newKeyProofSignature: k2Sig,
+            rotationTranscript: rotTranscript,
+            nowEpochSeconds: 1010
+        )) { error in
+            XCTAssertEqual(error as? RegistryLifecycleError, .rotationInterruptedNoActiveKey)
+        }
+        XCTAssertFalse(try registry.isSessionActive(sessionID: verifiedSess.sessionID))
+        // Both old key and unconfirmed new key are rejected
+        XCTAssertThrowsError(try registry.issueChallenge(clientID: "desktop-1", keyID: k1.keyID, connectionID: "conn-3", nowEpochSeconds: 1011)) { error in
+            XCTAssertEqual(error as? RegistryLifecycleError, .clientNotActive)
+        }
+        XCTAssertThrowsError(try registry.issueChallenge(clientID: "desktop-1", keyID: k2.keyID, connectionID: "conn-3", nowEpochSeconds: 1011)) { error in
+            XCTAssertEqual(error as? RegistryLifecycleError, .clientNotActive)
+        }
+
+        // Completed rotation with trusted UI confirmation activates k2 only (policy_version bumped)
+        let rotated = try registry.rotateClientKey(
+            clientID: "desktop-1",
+            newSigningKeyID: k2.keyID,
+            newSigningPublicKeyBase64: k2.publicKeyBytes.base64EncodedString(),
+            newNoiseKeyID: n2.keyID,
+            newNoisePublicKeyBase64: n2.publicKeyBytes.base64EncodedString(),
+            trustedDesktopConfirmed: true,
+            newKeyProofSignature: k2Sig,
+            rotationTranscript: rotTranscript,
+            nowEpochSeconds: 1012
+        )
+        XCTAssertEqual(rotated.status, .active)
+        XCTAssertEqual(rotated.signingKeyID, k2.keyID)
+        XCTAssertGreaterThan(rotated.policyVersion, 1)
+
+        // New key can authenticate, old key remains rejected
+        XCTAssertThrowsError(try registry.issueChallenge(clientID: "desktop-1", keyID: k1.keyID, connectionID: "conn-4", nowEpochSeconds: 1013))
+        let c3 = try registry.issueChallenge(clientID: "desktop-1", keyID: k2.keyID, connectionID: "conn-4", nowEpochSeconds: 1013)
+        let sig3 = try keyStore.sign(keyID: k2.keyID, payload: Data("desktop-1|\(k2.keyID)|conn-4|\(c3.nonce)".utf8))
+        let sess3 = try registry.authenticateConnection(
+            challengeID: c3.challengeID,
+            clientID: "desktop-1",
+            keyID: k2.keyID,
+            connectionID: "conn-4",
+            signature: sig3,
+            distributionSignedPeerVerified: true,
+            nowEpochSeconds: 1014
+        )
+        try registry.verifyRiskMutationGate(sessionID: sess3.sessionID)
+
+        // Revoke client -> policy version increments, active session closes, subsequent auth & risk gate denied
+        let revoked = try registry.revokeClient(clientID: "desktop-1", nowEpochSeconds: 1020)
+        XCTAssertEqual(revoked.status, .revoked)
+        XCTAssertGreaterThan(revoked.policyVersion, rotated.policyVersion)
+        XCTAssertFalse(try registry.isSessionActive(sessionID: sess3.sessionID))
+        XCTAssertThrowsError(try registry.verifyRiskMutationGate(sessionID: sess3.sessionID))
+        XCTAssertThrowsError(try registry.issueChallenge(clientID: "desktop-1", keyID: k2.keyID, connectionID: "conn-5", nowEpochSeconds: 1021))
+    }
 }

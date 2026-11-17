@@ -8,6 +8,6 @@
 
 ## 2. Service Discovery, Key Rotation/Revocation, and Risk Gate (Sub-PR B)
 
-- [ ] 2.1 Implement `CoreBootstrapDescriptor` and `ClientIdentityAndKeyRegistry` in SQLite (challenge auth, `rotateClientKey`, `revokeClient`, `verifyRiskMutationGate`).
-- [ ] 2.2 Add tests for bootstrap restriction, key rotation interruption/simultaneous-key denial, revocation session termination, and risk-mutation gate before distribution-signed positive control.
-- [ ] 2.3 Sync `macos-xpc-identity` spec to `openspec/specs/` and archive `imp-03-macos-xpc-identity`.
+- [x] 2.1 Implement `CoreBootstrapDescriptor` and `ClientIdentityAndKeyRegistry` in SQLite (challenge auth, `rotateClientKey`, `revokeClient`, `verifyRiskMutationGate`).
+- [x] 2.2 Add tests for bootstrap restriction, key rotation interruption/simultaneous-key denial, revocation session termination, and risk-mutation gate before distribution-signed positive control.
+- [x] 2.3 Sync `macos-xpc-identity` spec to `openspec/specs/` and archive `imp-03-macos-xpc-identity`.
