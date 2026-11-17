@@ -59,6 +59,11 @@ struct AnalyzerProfileRepository {
         guard validIdentifier(draft.profileID), validIdentifier(draft.workspaceRef), validIdentifier(draft.analyzerVersion),
               draft.analyzedAt.timeIntervalSince1970.isFinite, !draft.roots.isEmpty,
               draft.roots.allSatisfy(validIdentifier) else { return false }
+        if let digest = draft.scopeDigest, let exceptions = draft.exceptionPaths {
+            guard digest.utf8.count == 64,
+                  digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return false }
+            do { try AnalyzerExclusions.validateExceptions(exceptions) } catch { return false }
+        } else if draft.scopeDigest != nil || draft.exceptionPaths != nil { return false }
         var paths = Set<Data>()
         for entry in draft.evidence {
             do { _ = try AnalyzerExclusions.classify(relativePath: entry.relativePath) }

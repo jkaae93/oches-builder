@@ -39,6 +39,9 @@ struct AnalyzerProfileDraft: Codable {
     let analyzedAt: Date
     let roots: [String]
     let exclusions: [String]
+    /// Scope candidate metadata, not proof of authorization.
+    let scopeDigest: String?
+    let exceptionPaths: [String]?
     let observations: [Observation]
     let inferences: [Inference]
     let evidence: [Evidence]
@@ -77,7 +80,8 @@ struct AnalyzerProfileDraft: Codable {
     /// Does not perform I/O, decide permissions, transmit data, or persist.
     static func build(profileID: String, workspaceRef: String, analyzerVersion: String,
                       analyzedAt: Date, roots: [String], exclusions: [String],
-                      userConstraints: [String], collection: AnalyzerSafeRoot.EvidenceCollection) throws -> AnalyzerProfileDraft {
+                      userConstraints: [String], collection: AnalyzerSafeRoot.EvidenceCollection,
+                      scopeDigest: String? = nil, exceptionPaths: [String]? = nil) throws -> AnalyzerProfileDraft {
         guard !profileID.isEmpty, !workspaceRef.isEmpty, !analyzerVersion.isEmpty,
               !roots.isEmpty, roots.allSatisfy({ !$0.isEmpty }) else { throw AnalyzerSafeRoot.AccessError.invalidPath }
         let evidence = collection.files.map {
@@ -97,7 +101,7 @@ struct AnalyzerProfileDraft: Codable {
         let skipped = collection.preview.entries.compactMap { entry -> Skipped? in
             let reason: String
             if let exclusion = entry.exclusion { reason = "excluded_" + exclusion.rawValue }
-            else if let unread = collection.unreadReasons[entry.relativePath] { reason = unread }
+            else if let unread = collection.unreadReasons[Data(entry.relativePath.utf8)] { reason = unread }
             else if entry.kind == .symbolicLink { reason = "symbolic_link_not_followed" }
             else if entry.kind == .other { reason = "unsupported_file_type" }
             else if entry.kind == .regular && !readPaths.contains(Data(entry.relativePath.utf8)) { reason = "not_analyzed" }
@@ -111,7 +115,8 @@ struct AnalyzerProfileDraft: Codable {
         if !collection.partialReasons.isEmpty { uncertainties.append("analysis_incomplete") }
         let state: State = collection.cancelled ? .cancelled : collection.partialReasons.isEmpty ? .complete : .partial
         return AnalyzerProfileDraft(profileID: profileID, workspaceRef: workspaceRef, analyzerVersion: analyzerVersion,
-                                    analyzedAt: analyzedAt, roots: roots, exclusions: exclusions, observations: observations,
+                                    analyzedAt: analyzedAt, roots: roots, exclusions: exclusions, scopeDigest: scopeDigest,
+                                    exceptionPaths: exceptionPaths, observations: observations,
                                     inferences: inferences, evidence: evidence, skipped: skipped, uncertainties: uncertainties,
                                     limitsReached: limits, userConstraints: userConstraints, state: state)
     }
