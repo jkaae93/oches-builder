@@ -10,6 +10,8 @@ struct ValidatedRequestEnvelope {
     let workspaceID: String
     let requestID: String
     let operation: String
+    let payload: RawJSONValue
+    let approvalRefs: [String]?
     let expectedRevision: RevisionRef?
 }
 
@@ -47,7 +49,7 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
           case .string(let workspaceID) = field("workspaceId"), !workspaceID.isEmpty,
           case .string(let requestID) = field("requestId"), !requestID.isEmpty,
           case .string(let operation) = field("operation"), !operation.isEmpty,
-          case .object = field("payload") else { throw RequestEnvelopeError.invalidInput }
+          let payload = field("payload"), case .object = payload else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
     var expectedRevision: RevisionRef?
     if let revision = field("expectedRevision") {
@@ -61,8 +63,10 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
         }
         expectedRevision = RevisionRef(objectID: objectID, storeGeneration: generation, revision: number)
     }
+    var approvalRefs: [String]?
     if let approvals = field("approvalRefs") {
         guard case .array(let refs) = approvals, !refs.isEmpty, refs.allSatisfy({ nonempty($0) }) else { throw RequestEnvelopeError.invalidInput }
+        approvalRefs = refs.compactMap { if case .string(let value) = $0 { return value }; return nil }
     }
-    return ValidatedRequestEnvelope(clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, expectedRevision: expectedRevision)
+    return ValidatedRequestEnvelope(clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, payload: payload, approvalRefs: approvalRefs, expectedRevision: expectedRevision)
 }

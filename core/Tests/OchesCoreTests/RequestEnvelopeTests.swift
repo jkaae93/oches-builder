@@ -49,6 +49,14 @@ final class RequestEnvelopeTests: XCTestCase {
         XCTAssertEqual(envelope.operation, "query")
     }
 
+    func testPayloadAndApprovalReferencesAreRetained() throws {
+        let request = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{"x":null},"approvalRefs":["a","b"]}"#
+        let value = try validateUniqueJSONKeys(Data(request.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+        let envelope = try validateRequestEnvelope(value, negotiated: version)
+        XCTAssertEqual(envelope.approvalRefs, ["a", "b"])
+        XCTAssertEqual(String(decoding: try canonicalizeJSON(envelope.payload), as: UTF8.self), #"{"x":null}"#)
+    }
+
     func testRevisionRequiresCanonicalDecimalString() throws {
         let base = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"0"}}"#
         try validate(base)
