@@ -166,11 +166,11 @@ private func isSafeWireNumber(_ token: String, binary: Double) -> Bool {
     // Values that underflow to zero lose all numeric meaning.
     guard binary != 0 else { return false }
     let exponentText = pieces.count == 2 ? String(pieces[1]) : "0"
-    // Extremely large exponents can be classified by sign without overflowing.
-    let exponent: Int
-    if let parsed = Int(exponentText) { exponent = max(-1_000_000, min(1_000_000, parsed)) }
-    else if exponentText.first == "-" { exponent = -1_000_000 }
-    else { exponent = 1_000_000 }
+    let negativeExponent = exponentText.first == "-"
+    let unsignedExponent = exponentText.drop(while: { $0 == "+" || $0 == "-" }).drop(while: { $0 == "0" })
+    // Ignore leading zeroes before applying a bound to prevent integer overflow.
+    let magnitude = Int(unsignedExponent) ?? (unsignedExponent.isEmpty ? 0 : 1_000_000)
+    let exponent = (negativeExponent ? -1 : 1) * min(magnitude, 1_000_000)
     let scale = exponent - fractionCount
     if scale < 0 {
         let requiredZeros = -scale

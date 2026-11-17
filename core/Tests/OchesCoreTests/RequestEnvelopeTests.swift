@@ -52,6 +52,7 @@ final class RequestEnvelopeTests: XCTestCase {
         try validate(base.replacingOccurrences(of: #""protocolMajor":1"#, with: #""protocolMajor":1.0"#))
         XCTAssertThrowsError(try validate(base.replacingOccurrences(of: #""protocolMajor":1"#, with: #""protocolMajor":1.00000000000000000001"#)))
         XCTAssertThrowsError(try validate(base.replacingOccurrences(of: #""protocolMinor":0"#, with: #""protocolMinor":0.00000000000000000001"#)))
+        XCTAssertThrowsError(try validate(base.replacingOccurrences(of: #""protocolMajor":1"#, with: #""protocolMajor":1.0000000000000000000000000000000000000001"#)))
     }
 
     func testNullOmissionUnknownAndVersionMismatch() {

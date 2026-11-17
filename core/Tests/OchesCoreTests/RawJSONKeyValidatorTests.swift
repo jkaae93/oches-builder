@@ -35,6 +35,10 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testLongExponentFailsClosedAtFoundationSyntaxCheck() {
+        XCTAssertThrowsError(try check(Data(#"{"n":1e0000000000000000000000000000000000000000}"#.utf8)))
+    }
+
     func testRejectsUnboundedCallerLimits() {
         let input = Data("{}".utf8)
         XCTAssertThrowsError(try validateUniqueJSONKeys(input, maximumBytes: .max, maximumDepth: 8, maximumStringBytes: 64))

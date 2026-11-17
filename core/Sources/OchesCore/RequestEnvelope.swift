@@ -20,6 +20,8 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
     }
     func integer(_ value: RawJSONValue?) -> UInt32? {
         guard case .number(let text) = value,
+              let mantissa = text.split(whereSeparator: { $0 == "e" || $0 == "E" }).first,
+              mantissa.utf8.filter({ $0 >= 48 && $0 <= 57 }).count <= 38,
               let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), !decimal.isNaN,
               decimal >= 0, decimal <= Decimal(UInt32.max) else { return nil }
         var original = decimal
