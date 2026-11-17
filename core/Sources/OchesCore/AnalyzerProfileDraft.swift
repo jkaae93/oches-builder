@@ -101,7 +101,7 @@ struct AnalyzerProfileDraft: Codable {
         let skipped = collection.preview.entries.compactMap { entry -> Skipped? in
             let reason: String
             if let exclusion = entry.exclusion { reason = "excluded_" + exclusion.rawValue }
-            else if let unread = collection.unreadReasons[entry.relativePath] { reason = unread }
+            else if let unread = collection.unreadReasons[Data(entry.relativePath.utf8)] { reason = unread }
             else if entry.kind == .symbolicLink { reason = "symbolic_link_not_followed" }
             else if entry.kind == .other { reason = "unsupported_file_type" }
             else if entry.kind == .regular && !readPaths.contains(Data(entry.relativePath.utf8)) { reason = "not_analyzed" }

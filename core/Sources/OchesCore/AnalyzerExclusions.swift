@@ -7,6 +7,50 @@ enum AnalyzerExclusion: String, Sendable {
 }
 
 struct AnalyzerExclusions {
+    enum CompilationInterrupted: Error { case interrupted }
+    /// Byte-indexed rules avoid rescanning the entire rule list per file.
+    struct Compiled {
+        private let excluded: Set<Data>
+        private let exceptions: Set<Data>
+        private let exceptionAncestors: Set<Data>
+
+        init(userExcludedPaths: [String], exceptionPaths: [String], shouldStop: () -> Bool = { false }) throws {
+            var excluded = Set<Data>()
+            for path in userExcludedPaths {
+                if shouldStop() { throw CompilationInterrupted.interrupted }
+                _ = try AnalyzerExclusions.classify(relativePath: path)
+                excluded.insert(Data(path.utf8))
+            }
+            var exceptions = Set<Data>()
+            var ancestors = Set<Data>()
+            for path in exceptionPaths {
+                if shouldStop() { throw CompilationInterrupted.interrupted }
+                _ = try AnalyzerExclusions.classify(relativePath: path)
+                let bytes = Array(path.utf8)
+                guard exceptions.insert(Data(bytes)).inserted else { throw AnalyzerSafeRoot.AccessError.invalidPath }
+                for index in bytes.indices where bytes[index] == 47 {
+                    ancestors.insert(Data(bytes[..<index]))
+                }
+            }
+            self.excluded = excluded
+            self.exceptions = exceptions
+            self.exceptionAncestors = ancestors
+        }
+
+        func classify(_ path: String) throws -> AnalyzerExclusion? {
+            let fallback = try AnalyzerExclusions.classify(relativePath: path)
+            let bytes = Array(path.utf8)
+            if excluded.contains(Data(bytes)) { return .userRule }
+            for index in bytes.indices where bytes[index] == 47 {
+                if excluded.contains(Data(bytes[..<index])) { return .userRule }
+            }
+            return fallback
+        }
+
+        func isException(_ path: String) -> Bool { exceptions.contains(Data(path.utf8)) }
+        func leadsToException(_ path: String) -> Bool { exceptionAncestors.contains(Data(path.utf8)) }
+    }
+
     static func validateExceptions(_ paths: [String]) throws {
         var seen = Set<Data>()
         for path in paths {
@@ -15,14 +59,6 @@ struct AnalyzerExclusions {
         }
     }
 
-    static func isExactException(_ path: String, in exceptions: [String]) -> Bool {
-        exceptions.contains { $0.utf8.elementsEqual(path.utf8) }
-    }
-
-    static func leadsToException(_ path: String, in exceptions: [String]) -> Bool {
-        let prefix = Array(path.utf8) + [47]
-        return exceptions.contains { $0.utf8.starts(with: prefix) }
-    }
     private static let versionControl: Set<String> = [".git", ".hg", ".svn"]
     private static let dependencies: Set<String> = ["node_modules", ".dart_tool", ".pub-cache", "vendor", "pods", ".venv", "venv", "__pycache__"]
     private static let builds: Set<String> = ["build", "dist", "target", ".next", ".gradle", "deriveddata", "coverage"]

@@ -3,6 +3,21 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerSafeRootTests: XCTestCase {
+    func testCancellationDuringRulePreparationReturnsPartialWithoutReading() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("not read".utf8).write(to: root.appendingPathComponent("visible"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let exclusions = (0..<1000).map { "excluded\($0)" }
+        var checks = 0
+        let result = try scanner.collectEvidence(userExcludedPaths: exclusions, isCancelled: { checks += 1; return checks > 20 })
+        XCTAssertTrue(result.cancelled)
+        XCTAssertTrue(result.partialReasons.contains("cancelled"))
+        XCTAssertTrue(result.files.isEmpty)
+        XCTAssertTrue(result.preview.entries.isEmpty)
+    }
+
     func testExactExceptionReadsOnlyRequestedFileAndUserExclusionWins() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root.appendingPathComponent(".git/sub"), withIntermediateDirectories: true)
@@ -155,7 +170,7 @@ extension AnalyzerSafeRootTests {
         let evidence = try XCTUnwrap(result.files.first { $0.relativePath == "sample.txt" })
         XCTAssertEqual(evidence.size, 3)
         XCTAssertEqual(evidence.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
-        XCTAssertEqual(result.unreadReasons["large.txt"], "file_limit")
+        XCTAssertEqual(result.unreadReasons[Data("large.txt".utf8)], "file_limit")
         XCTAssertTrue(result.partialReasons.contains("file_limit"))
         XCTAssertFalse(result.files.contains { $0.relativePath == ".env" })
         let cancelled = try scanner.collectEvidence(isCancelled: { true })

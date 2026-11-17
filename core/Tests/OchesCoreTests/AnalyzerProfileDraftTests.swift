@@ -3,6 +3,19 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerProfileDraftTests: XCTestCase {
+    func testDistinctUnicodePathsKeepSeparateUnreadReasons() throws {
+        let first = "\u{00e9}"
+        let second = "e\u{0301}"
+        func entry(_ path: String) -> AnalyzerSafeRoot.PreviewEntry {
+            AnalyzerSafeRoot.PreviewEntry(relativePath: path, kind: .regular, size: 1, device: 1, inode: 1, modifiedSeconds: 1, modifiedNanoseconds: 0, exclusion: nil, symbolicLinkTarget: nil)
+        }
+        let preview = AnalyzerSafeRoot.Preview(entries: [entry(first), entry(second)], partialReasons: [])
+        let collection = AnalyzerSafeRoot.EvidenceCollection(preview: preview, files: [], unreadReasons: [Data(first.utf8): "file_limit", Data(second.utf8): "read_unavailable_or_changed"], partialReasons: ["read_incomplete"], cancelled: false)
+        let draft = try AnalyzerProfileDraft.build(profileID: "p", workspaceRef: "w", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], exclusions: [], userConstraints: [], collection: collection)
+        XCTAssertEqual(draft.skipped.first { $0.relativePath.utf8.elementsEqual(first.utf8) }?.reason, "file_limit")
+        XCTAssertEqual(draft.skipped.first { $0.relativePath.utf8.elementsEqual(second.utf8) }?.reason, "read_unavailable_or_changed")
+    }
+
     func testSkippedMetadataAndLinkTargetSurviveInProfile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

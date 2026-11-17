@@ -51,7 +51,7 @@ final class AnalyzerScopeCandidateTests: XCTestCase {
         let result = try scope.collectCandidateEvidence(using: scanner)
         XCTAssertTrue(result.files.isEmpty)
         XCTAssertTrue(result.partialReasons.contains("file_limit"))
-        XCTAssertEqual(result.unreadReasons[".env"], "file_limit")
+        XCTAssertEqual(result.unreadReasons[Data(".env".utf8)], "file_limit")
         XCTAssertTrue(result.preview.entries.contains { $0.relativePath == "excluded" && $0.exclusion == .userRule })
         let draft = try scope.buildCandidateProfile(using: scanner, profileID: "p", analyzerVersion: "1", analyzedAt: Date(), roots: ["root"], userConstraints: [])
         XCTAssertEqual(draft.scopeDigest, scope.digest)
