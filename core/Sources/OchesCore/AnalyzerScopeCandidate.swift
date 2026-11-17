@@ -16,11 +16,12 @@ struct AnalyzerScopeCandidate {
     let root: AnalyzerSafeRoot.RootIdentity
     let policyVersion: String
     let excludedPaths: [String]
+    let exceptionPaths: [String]
     let limits: Limits
     let digest: String
 
     init(workspaceID: String, scanner: AnalyzerSafeRoot, policyVersion: String,
-         excludedPaths: [String], limits: Limits) throws {
+         excludedPaths: [String], exceptionPaths: [String] = [], limits: Limits) throws {
         guard !workspaceID.isEmpty, !workspaceID.utf8.contains(0),
               !policyVersion.isEmpty, !policyVersion.utf8.contains(0),
               (1...10_000).contains(limits.maximumEntries),
@@ -33,6 +34,8 @@ struct AnalyzerScopeCandidate {
             guard seen.insert(Data(path.utf8)).inserted else { throw AnalyzerSafeRoot.AccessError.invalidPath }
         }
         let sorted = excludedPaths.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
+        try AnalyzerExclusions.validateExceptions(exceptionPaths)
+        let sortedExceptions = exceptionPaths.sorted { $0.utf8.lexicographicallyPrecedes($1.utf8) }
         let identity = try scanner.rootIdentity()
         let canonical: RawJSONValue = .object([
             ("domain", .string("oches.analyzer.scope.v1")),
@@ -41,6 +44,7 @@ struct AnalyzerScopeCandidate {
             ("rootInode", .string(String(identity.inode))),
             ("policyVersion", .string(policyVersion)),
             ("excludedPaths", .array(sorted.map { .string($0) })),
+            ("exceptionPaths", .array(sortedExceptions.map { .string($0) })),
             ("maximumEntries", .number(String(limits.maximumEntries))),
             ("maximumTotalBytes", .number(String(limits.maximumTotalBytes))),
             ("maximumFileBytes", .number(String(limits.maximumFileBytes))),
@@ -50,6 +54,7 @@ struct AnalyzerScopeCandidate {
         self.root = identity
         self.policyVersion = policyVersion
         self.excludedPaths = sorted
+        self.exceptionPaths = sortedExceptions
         self.limits = limits
         self.digest = try canonicalSHA256(canonical).map { String(format: "%02x", $0) }.joined()
     }

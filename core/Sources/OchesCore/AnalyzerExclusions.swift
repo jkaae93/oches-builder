@@ -1,13 +1,28 @@
 import Foundation
 
 /// Default content exclusions; this policy does not claim to identify all secrets.
-/// Overrides must be path-specific and separately bound to a verified approval;
-/// this internal classifier does not implement overrides.
+/// Overrides must be path-specific and separately bound to a verified approval.
 enum AnalyzerExclusion: String, Sendable {
     case credentials, versionControl, dependencies, buildOutput, media, archive, bundle, userRule
 }
 
 struct AnalyzerExclusions {
+    static func validateExceptions(_ paths: [String]) throws {
+        var seen = Set<Data>()
+        for path in paths {
+            _ = try classify(relativePath: path)
+            guard seen.insert(Data(path.utf8)).inserted else { throw AnalyzerSafeRoot.AccessError.invalidPath }
+        }
+    }
+
+    static func isExactException(_ path: String, in exceptions: [String]) -> Bool {
+        exceptions.contains { $0.utf8.elementsEqual(path.utf8) }
+    }
+
+    static func leadsToException(_ path: String, in exceptions: [String]) -> Bool {
+        let prefix = Array(path.utf8) + [47]
+        return exceptions.contains { $0.utf8.starts(with: prefix) }
+    }
     private static let versionControl: Set<String> = [".git", ".hg", ".svn"]
     private static let dependencies: Set<String> = ["node_modules", ".dart_tool", ".pub-cache", "vendor", "pods", ".venv", "venv", "__pycache__"]
     private static let builds: Set<String> = ["build", "dist", "target", ".next", ".gradle", "deriveddata", "coverage"]

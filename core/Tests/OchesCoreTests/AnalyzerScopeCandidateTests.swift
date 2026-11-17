@@ -18,6 +18,8 @@ final class AnalyzerScopeCandidateTests: XCTestCase {
         XCTAssertNotEqual(initial.digest, try scope("other", "1", ["a", "b"], scanner, limits).digest)
         XCTAssertNotEqual(initial.digest, try scope("ws", "2", ["a", "b"], scanner, limits).digest)
         XCTAssertNotEqual(initial.digest, try scope("ws", "1", ["a", "c"], scanner, limits).digest)
+        let exception = try AnalyzerScopeCandidate(workspaceID: "ws", scanner: scanner, policyVersion: "1", excludedPaths: ["a", "b"], exceptionPaths: [".env"], limits: limits)
+        XCTAssertNotEqual(initial.digest, exception.digest)
         let smaller = AnalyzerScopeCandidate.Limits(maximumEntries: 9_999, maximumTotalBytes: 104_857_600, maximumFileBytes: 1_048_576, maximumSeconds: 300)
         XCTAssertNotEqual(initial.digest, try scope("ws", "1", ["a", "b"], scanner, smaller).digest)
         let composed = "\u{00e9}"

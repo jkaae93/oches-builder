@@ -50,10 +50,12 @@ final class AnalyzerSafeRoot {
         try readEvidence(relativePath: relativePath, maximumBytes: maximumBytes, userExcludedPaths: userExcludedPaths, beforeFinalOpen: beforeFinalOpen, beforeFinalStat: beforeFinalStat).bytes
     }
 
-    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil, onBytesRead: ((Int) -> Void)? = nil, shouldStop: () -> Bool = { false }) throws -> ReadEvidence {
+    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil, onBytesRead: ((Int) -> Void)? = nil, shouldStop: () -> Bool = { false }) throws -> ReadEvidence {
         guard maximumBytes > 0, maximumBytes <= 1_048_576,
               !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0) else { throw AccessError.invalidPath }
-        guard try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) == nil else { throw AccessError.excluded }
+        try AnalyzerExclusions.validateExceptions(exceptionPaths)
+        let exclusion = try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths)
+        guard exclusion == nil || (exclusion != .userRule && AnalyzerExclusions.isExactException(relativePath, in: exceptionPaths)) else { throw AccessError.excluded }
         let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { throw AccessError.invalidPath }
         var current = dup(rootFD)
@@ -123,15 +125,16 @@ extension AnalyzerSafeRoot {
 
     /// Internal metadata-only traversal. No content is read and no link followed.
     /// A caller still needs a verified workspace and policy before presenting it.
-    func preview(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> Preview {
+    func preview(userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> Preview {
         guard maximumEntries > 0, maximumEntries <= 10_000, maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
         // Validate every user rule even for an empty directory.
         _ = try AnalyzerExclusions.classify(relativePath: "validation", userExcludedPaths: userExcludedPaths)
+        try AnalyzerExclusions.validateExceptions(exceptionPaths)
         let deadline = ProcessInfo.processInfo.systemUptime + maximumSeconds
         var entries: [PreviewEntry] = []
         var reasons = Set<String>()
 
-        func walk(_ directoryFD: Int32, prefix: String, depth: Int) {
+        func walk(_ directoryFD: Int32, prefix: String, depth: Int, restricted: Bool) {
             guard depth <= 64 else { reasons.insert("depth_limit"); return }
             guard reasons.isDisjoint(with: ["entry_limit", "time_limit", "cancelled"]) else { return }
             // dup shares the directory offset; openat creates an independent stream
@@ -158,7 +161,8 @@ extension AnalyzerSafeRoot {
                 if name == "." || name == ".." { continue }
                 if entries.count >= maximumEntries { reasons.insert("entry_limit"); return }
                 let relativePath = prefix.isEmpty ? name : prefix + "/" + name
-                let exclusion: AnalyzerExclusion?
+                if restricted && !AnalyzerExclusions.isExactException(relativePath, in: exceptionPaths) && !AnalyzerExclusions.leadsToException(relativePath, in: exceptionPaths) { continue }
+                var exclusion: AnalyzerExclusion?
                 do { exclusion = try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) }
                 catch { reasons.insert("invalid_filename"); continue }
                 var info = stat()
@@ -168,6 +172,7 @@ extension AnalyzerSafeRoot {
                 }
                 let type = info.st_mode & S_IFMT
                 let kind: PreviewEntry.Kind = type == S_IFREG ? .regular : type == S_IFDIR ? .directory : type == S_IFLNK ? .symbolicLink : .other
+                if kind == .regular && exclusion != .userRule && AnalyzerExclusions.isExactException(relativePath, in: exceptionPaths) { exclusion = nil }
                 var linkTarget: String?
                 if kind == .symbolicLink {
                     var buffer = [CChar](repeating: 0, count: 4096)
@@ -187,19 +192,19 @@ extension AnalyzerSafeRoot {
                     } else { reasons.insert("link_target_unavailable") }
                 }
                 entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, device: info.st_dev, inode: info.st_ino, modifiedSeconds: Int64(info.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec), exclusion: exclusion, symbolicLinkTarget: linkTarget))
-                if kind == .directory && exclusion == nil {
+                if kind == .directory && (exclusion == nil || (exclusion != .userRule && AnalyzerExclusions.leadsToException(relativePath, in: exceptionPaths))) {
                     let child = openat(directoryFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard child >= 0 else { reasons.insert("directory_unavailable"); continue }
                     // Ensure the object enumerated is the one opened, or report a race.
                     var opened = stat()
                     if fstat(child, &opened) == 0 && opened.st_dev == info.st_dev && opened.st_ino == info.st_ino {
-                        walk(child, prefix: relativePath, depth: depth + 1)
+                        walk(child, prefix: relativePath, depth: depth + 1, restricted: restricted || exclusion != nil)
                     } else { reasons.insert("path_changed") }
                     close(child)
                 }
             }
         }
-        walk(rootFD, prefix: "", depth: 0)
+        walk(rootFD, prefix: "", depth: 0, restricted: false)
         return Preview(entries: entries, partialReasons: reasons)
     }
 }
@@ -224,14 +229,14 @@ extension AnalyzerSafeRoot {
 
     /// Internal local-only candidate; requires verified approval and storage
     /// integration before it can be used as a product analysis operation.
-    func collectEvidence(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000,
+    func collectEvidence(userExcludedPaths: Set<String> = [], exceptionPaths: [String] = [], maximumEntries: Int = 10_000,
                          maximumTotalBytes: Int = 104_857_600, maximumFileBytes: Int = 1_048_576,
                          maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> EvidenceCollection {
         guard maximumTotalBytes > 0, maximumTotalBytes <= 104_857_600,
               maximumFileBytes > 0, maximumFileBytes <= 1_048_576,
               maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
         let deadline = ProcessInfo.processInfo.systemUptime + maximumSeconds
-        let scope = try preview(userExcludedPaths: userExcludedPaths, maximumEntries: maximumEntries, maximumSeconds: maximumSeconds, isCancelled: isCancelled)
+        let scope = try preview(userExcludedPaths: userExcludedPaths, exceptionPaths: exceptionPaths, maximumEntries: maximumEntries, maximumSeconds: maximumSeconds, isCancelled: isCancelled)
         var reasons = scope.partialReasons
         var unread: [String: String] = [:]
         var files: [FileEvidence] = []
@@ -248,7 +253,7 @@ extension AnalyzerSafeRoot {
             var stoppedForCancellation = false
             var stoppedForTime = false
             do {
-                let result = try readEvidence(relativePath: entry.relativePath, maximumBytes: min(maximumFileBytes, remaining), userExcludedPaths: userExcludedPaths, expectedDevice: entry.device, expectedInode: entry.inode, onBytesRead: { total += $0 }, shouldStop: {
+                let result = try readEvidence(relativePath: entry.relativePath, maximumBytes: min(maximumFileBytes, remaining), userExcludedPaths: userExcludedPaths, exceptionPaths: exceptionPaths, expectedDevice: entry.device, expectedInode: entry.inode, onBytesRead: { total += $0 }, shouldStop: {
                     if isCancelled() { stoppedForCancellation = true; return true }
                     if ProcessInfo.processInfo.systemUptime >= deadline { stoppedForTime = true; return true }
                     return false

@@ -3,6 +3,29 @@ import XCTest
 @testable import OchesCore
 
 final class AnalyzerSafeRootTests: XCTestCase {
+    func testExactExceptionReadsOnlyRequestedFileAndUserExclusionWins() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(".git/sub"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("permitted".utf8).write(to: root.appendingPathComponent(".git/sub/allowed"))
+        try Data("private".utf8).write(to: root.appendingPathComponent(".git/sub/sibling"))
+        try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent(".git/sub/link").path, withDestinationPath: "/outside")
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let exceptions = [".git/sub/allowed", ".git/sub/link"]
+        let result = try scanner.collectEvidence(exceptionPaths: exceptions)
+        XCTAssertEqual(result.files.map(\.relativePath), [".git/sub/allowed"])
+        XCTAssertFalse(result.preview.entries.contains { $0.relativePath == ".git/sub/sibling" })
+        XCTAssertTrue(result.preview.entries.contains { $0.relativePath == ".git/sub/link" && $0.kind == .symbolicLink })
+        let excluded = try scanner.collectEvidence(userExcludedPaths: [".git/sub"], exceptionPaths: exceptions)
+        XCTAssertTrue(excluded.files.isEmpty)
+        XCTAssertFalse(excluded.preview.entries.contains { $0.relativePath == ".git/sub/allowed" })
+        XCTAssertThrowsError(try scanner.readEvidence(relativePath: ".git/sub/sibling", maximumBytes: 100, exceptionPaths: exceptions))
+        XCTAssertThrowsError(try scanner.readEvidence(relativePath: ".git/sub/link", maximumBytes: 100, exceptionPaths: exceptions))
+        let directoryOnly = try scanner.collectEvidence(exceptionPaths: [".git"])
+        XCTAssertTrue(directoryOnly.files.isEmpty)
+        XCTAssertFalse(directoryOnly.preview.entries.contains { $0.relativePath == ".git/sub/allowed" })
+    }
+
     func testRegularFileAndEscapesAreRejected() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = base.appendingPathComponent("root")
