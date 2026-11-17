@@ -35,6 +35,34 @@ final class JSONCanonicalizationTests: XCTestCase {
         XCTAssertEqual(String(decoding: try canonicalizeJSON(value), as: UTF8.self), "{\"e\u{301}\":2,\"é\":1,\"😀\":4,\"\u{e000}\":3}")
     }
 
+    func testRFC8785AppendixBNumbers() throws {
+        // RFC 8785 Appendix B specifies these IEEE-754 bit patterns and outputs.
+        let samples: [(UInt64, String)] = [
+            (0x0000000000000000, "0"), (0x8000000000000000, "0"),
+            (0x0000000000000001, "5e-324"), (0x8000000000000001, "-5e-324"),
+            (0x7fefffffffffffff, "1.7976931348623157e+308"),
+            (0xffefffffffffffff, "-1.7976931348623157e+308"),
+            (0x4340000000000000, "9007199254740992"),
+            (0x44b52d02c7e14af5, "9.999999999999997e+22"),
+            (0x44b52d02c7e14af6, "1e+23"),
+            (0x44b52d02c7e14af7, "1.0000000000000001e+23"),
+            (0x444b1ae4d6e2ef4f, "999999999999999900000"),
+            (0x444b1ae4d6e2ef50, "1e+21"),
+            (0x3eb0c6f7a0b5ed8c, "9.999999999999997e-7"),
+            (0x3eb0c6f7a0b5ed8d, "0.000001"),
+            (0x41b3de4355555554, "333333333.33333325"),
+            (0x41b3de4355555555, "333333333.3333333")
+        ]
+        for (bits, expected) in samples {
+            let number = Double(bitPattern: bits)
+            let encoded = try canonicalizeJSON(.number(String(number)))
+            XCTAssertEqual(String(decoding: encoded, as: UTF8.self), expected, String(bits, radix: 16))
+        }
+        for token in ["nan", "inf", "-inf"] {
+            XCTAssertThrowsError(try canonicalizeJSON(.number(token)))
+        }
+    }
+
     func testOmissionNullAndArrayOrderRemainDistinct() throws {
         let omitted = try canonicalizeJSON(parse(#"{"payload":{}}"#))
         let explicitNull = try canonicalizeJSON(parse(#"{"payload":{"value":null}}"#))
