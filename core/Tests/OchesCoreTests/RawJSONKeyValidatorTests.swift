@@ -16,6 +16,14 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         XCTAssertThrowsError(try validateUniqueJSONKeys(Data(#"{"abc":"xyzz"}"#.utf8), maximumBytes: 100, maximumDepth: 2, maximumStringBytes: 3))
     }
 
+    func testStringLimitCountsRawEscapedBytes() throws {
+        let input = Data(#"{"x":"\u0061"}"#.utf8)
+        try validateUniqueJSONKeys(input, maximumBytes: 100, maximumDepth: 2, maximumStringBytes: 6)
+        XCTAssertThrowsError(try validateUniqueJSONKeys(input, maximumBytes: 100, maximumDepth: 2, maximumStringBytes: 5)) {
+            XCTAssertEqual($0 as? RawJSONValidationError, .limitExceeded)
+        }
+    }
+
     func testNumericSafeBoundaryAndExponent() throws {
         for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0"] {
             try check(Data("{\"n\":\(token)}".utf8))

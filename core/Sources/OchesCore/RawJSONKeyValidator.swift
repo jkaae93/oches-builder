@@ -19,7 +19,8 @@ public indirect enum RawJSONValue {
 
 /// Detects duplicate object keys before Foundation can discard them. This is not
 /// a complete wire validator: schema and JCS checks are
-/// still required before any request can be dispatched.
+/// still required before any request can be dispatched. The string limit counts
+/// UTF-8 bytes between quotes in the original JSON, including escape bytes.
 @discardableResult
 func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws -> RawJSONValue {
     try parseJSON(data, maximumBytes: maximumBytes, maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes, wirePolicy: true)
