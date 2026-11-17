@@ -54,22 +54,23 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
           case .string(let operation) = field("operation"), !operation.isEmpty,
           let payload = field("payload"), case .object = payload else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
-    var expectedRevision: RevisionRef?
-    if let revision = field("expectedRevision") {
-        guard case .object(let parts) = revision, parts.count == 3, Set(parts.map { Data($0.0.utf8) }).count == 3 else { throw RequestEnvelopeError.invalidInput }
-        func part(_ name: String) -> RawJSONValue? { parts.first { $0.0.utf8.elementsEqual(name.utf8) }?.1 }
-        guard case .string(let objectID) = part("objectId"), !objectID.isEmpty,
-              case .string(let generation) = part("storeGeneration"), !generation.isEmpty,
-              case .string(let number) = part("revision"),
-              number == "0" || (number.first.map { $0 >= "1" && $0 <= "9" } == true && number.utf8.allSatisfy { $0 >= 48 && $0 <= 57 }) else {
-            throw RequestEnvelopeError.invalidInput
-        }
-        expectedRevision = RevisionRef(objectID: objectID, storeGeneration: generation, revision: number)
-    }
+    let expectedRevision = try field("expectedRevision").map(parseRevisionRef)
     var approvalRefs: [String]?
     if let approvals = field("approvalRefs") {
         guard case .array(let refs) = approvals, !refs.isEmpty, refs.allSatisfy({ nonempty($0) }) else { throw RequestEnvelopeError.invalidInput }
         approvalRefs = refs.compactMap { if case .string(let value) = $0 { return value }; return nil }
     }
     return ValidatedRequestEnvelope(original: value, clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, payload: payload, approvalRefs: approvalRefs, expectedRevision: expectedRevision)
+}
+
+func parseRevisionRef(_ value: RawJSONValue) throws -> RevisionRef {
+    guard case .object(let parts) = value, parts.count == 3, Set(parts.map { Data($0.0.utf8) }).count == 3 else { throw RequestEnvelopeError.invalidInput }
+    func part(_ name: String) -> RawJSONValue? { parts.first { $0.0.utf8.elementsEqual(name.utf8) }?.1 }
+    guard case .string(let objectID) = part("objectId"), !objectID.isEmpty,
+          case .string(let generation) = part("storeGeneration"), !generation.isEmpty,
+          case .string(let number) = part("revision"),
+          number == "0" || (number.first.map { $0 >= "1" && $0 <= "9" } == true && number.utf8.allSatisfy { $0 >= 48 && $0 <= 57 }) else {
+        throw RequestEnvelopeError.invalidInput
+    }
+    return RevisionRef(objectID: objectID, storeGeneration: generation, revision: number)
 }
