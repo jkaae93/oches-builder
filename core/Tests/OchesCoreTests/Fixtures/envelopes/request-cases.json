@@ -1,0 +1,10 @@
+[
+  {"name":"valid", "valid":true, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{}}},
+  {"name":"valid revision", "valid":true, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"9"}}},
+  {"name":"missing requestId", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","operation":"q","payload":{}}},
+  {"name":"null payload", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":null}},
+  {"name":"null revision", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{},"expectedRevision":null}},
+  {"name":"revision newline", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"1\n"}}},
+  {"name":"empty approvals", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{},"approvalRefs":[]}},
+  {"name":"unknown field", "valid":false, "request":{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{},"other":true}}
+]

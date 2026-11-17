@@ -8,6 +8,23 @@ final class RequestEnvelopeTests: XCTestCase {
         let value = try validateUniqueJSONKeys(Data(text.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
         try validateRequestEnvelope(value, negotiated: version)
     }
+    func testSharedSchemaCases() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "request-cases", withExtension: "json", subdirectory: "Fixtures/envelopes"))
+        let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        for item in cases {
+            let name = try XCTUnwrap(item["name"] as? String)
+            let expected = try XCTUnwrap(item["valid"] as? Bool)
+            let request = try XCTUnwrap(item["request"])
+            let data = try JSONSerialization.data(withJSONObject: request)
+            let value = try validateUniqueJSONKeys(data, maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+            if expected {
+                XCTAssertNoThrow(try validateRequestEnvelope(value, negotiated: version), name)
+            } else {
+                XCTAssertThrowsError(try validateRequestEnvelope(value, negotiated: version), name)
+            }
+        }
+    }
+
     func testValidAndOptionalRevision() throws {
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"query","payload":{}}"#)
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"12"}}"#)

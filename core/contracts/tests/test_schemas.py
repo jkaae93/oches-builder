@@ -15,6 +15,13 @@ def schema(name):
 
 
 class SchemaTests(unittest.TestCase):
+    def test_shared_request_cases(self):
+        validator = schema("request")
+        path = ROOT.parent / "Tests/OchesCoreTests/Fixtures/envelopes/request-cases.json"
+        for case in json.loads(path.read_text()):
+            with self.subTest(case=case["name"]):
+                self.assertEqual(validator.is_valid(case["request"]), case["valid"])
+
     def test_request(self):
         validator = schema("request")
         request = {"protocolMajor": 1, "protocolMinor": 0, "clientId": "c", "workspaceId": "w", "requestId": "r", "operation": "q", "payload": {}}
