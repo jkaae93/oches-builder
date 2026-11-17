@@ -118,3 +118,59 @@ extension AnalyzerSafeRootTests {
         XCTAssertTrue(limited.partialReasons.contains("entry_limit"))
     }
 }
+
+extension AnalyzerSafeRootTests {
+    func testEvidenceContainsHashNotContentsAndEnforcesLimits() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("abc".utf8).write(to: root.appendingPathComponent("sample.txt"))
+        try Data(repeating: 1, count: 20).write(to: root.appendingPathComponent("large.txt"))
+        try Data("synthetic".utf8).write(to: root.appendingPathComponent(".env"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let result = try scanner.collectEvidence(maximumTotalBytes: 100, maximumFileBytes: 10)
+        let evidence = try XCTUnwrap(result.files.first { $0.relativePath == "sample.txt" })
+        XCTAssertEqual(evidence.size, 3)
+        XCTAssertEqual(evidence.sha256, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        XCTAssertEqual(result.unreadReasons["large.txt"], "file_limit")
+        XCTAssertTrue(result.partialReasons.contains("file_limit"))
+        XCTAssertFalse(result.files.contains { $0.relativePath == ".env" })
+        let cancelled = try scanner.collectEvidence(isCancelled: { true })
+        XCTAssertTrue(cancelled.cancelled)
+        XCTAssertTrue(cancelled.files.isEmpty)
+    }
+
+    func testReplacedRegularFileAndAggregateLimit() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appendingPathComponent("one.txt")
+        try Data("one".utf8).write(to: first)
+        try Data("two".utf8).write(to: root.appendingPathComponent("two.txt"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        let preview = try scanner.preview()
+        let entry = try XCTUnwrap(preview.entries.first { $0.relativePath == "one.txt" })
+        try FileManager.default.moveItem(at: first, to: root.appendingPathComponent("original.txt"))
+        try Data("new".utf8).write(to: first)
+        XCTAssertThrowsError(try scanner.readEvidence(relativePath: "one.txt", maximumBytes: 100, expectedDevice: entry.device, expectedInode: entry.inode)) {
+            XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .changedDuringRead)
+        }
+        let limited = try scanner.collectEvidence(maximumTotalBytes: 4, maximumFileBytes: 4)
+        XCTAssertEqual(limited.files.count, 1)
+        XCTAssertTrue(limited.partialReasons.contains("total_limit"))
+    }
+
+    func testOutsideHardLinkIsNotRead() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = base.appendingPathComponent("root")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let outside = base.appendingPathComponent("outside.txt")
+        try Data("outside".utf8).write(to: outside)
+        try FileManager.default.linkItem(at: outside, to: root.appendingPathComponent("alias.txt"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        XCTAssertThrowsError(try scanner.read(relativePath: "alias.txt", maximumBytes: 100)) {
+            XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .multipleHardLinks)
+        }
+    }
+}

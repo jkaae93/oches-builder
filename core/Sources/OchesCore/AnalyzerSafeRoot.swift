@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import CryptoKit
 
 /// Descriptor-relative primitive only. Callers must verify workspace identity,
 /// scope approval and exclusions before invoking it; this is not an analyzer API.
@@ -11,6 +12,7 @@ final class AnalyzerSafeRoot {
         case limitExceeded
         case changedDuringRead
         case excluded
+        case multipleHardLinks
     }
 
     private let rootFD: Int32
@@ -23,9 +25,20 @@ final class AnalyzerSafeRoot {
 
     deinit { close(rootFD) }
 
-    /// Reads a regular file without following links, including in parent components.
-    /// The caller owns the returned bytes and must not log or transmit them.
+    struct ReadEvidence {
+        let bytes: Data
+        let size: Int64
+        let modifiedSeconds: Int64
+        let modifiedNanoseconds: Int64
+        let sha256: String
+    }
+
+    /// Internal primitive. No bytes may be logged or sent to a provider.
     func read(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> Data {
+        try readEvidence(relativePath: relativePath, maximumBytes: maximumBytes, userExcludedPaths: userExcludedPaths, beforeFinalOpen: beforeFinalOpen, beforeFinalStat: beforeFinalStat).bytes
+    }
+
+    func readEvidence(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], expectedDevice: dev_t? = nil, expectedInode: ino_t? = nil, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> ReadEvidence {
         guard maximumBytes > 0, maximumBytes <= 1_048_576,
               !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0) else { throw AccessError.invalidPath }
         guard try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) == nil else { throw AccessError.excluded }
@@ -45,6 +58,9 @@ final class AnalyzerSafeRoot {
         var before = stat()
         guard fstat(current, &before) == 0 else { throw AccessError.unavailable }
         guard (before.st_mode & S_IFMT) == S_IFREG else { throw AccessError.notRegularFile }
+        // A hard link can alias a file outside the approved namespace.
+        guard before.st_nlink == 1 else { throw AccessError.multipleHardLinks }
+        guard (expectedDevice == nil || expectedDevice == before.st_dev), (expectedInode == nil || expectedInode == before.st_ino) else { throw AccessError.changedDuringRead }
         guard before.st_size >= 0, before.st_size <= maximumBytes else { throw AccessError.limitExceeded }
         var result = Data()
         var buffer = [UInt8](repeating: 0, count: 16_384)
@@ -67,7 +83,7 @@ final class AnalyzerSafeRoot {
               before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
               before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
               Int64(result.count) == after.st_size else { throw AccessError.changedDuringRead }
-        return result
+        return ReadEvidence(bytes: result, size: after.st_size, modifiedSeconds: Int64(after.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(after.st_mtimespec.tv_nsec), sha256: SHA256.hash(data: result).map { String(format: "%02x", $0) }.joined())
     }
 }
 
@@ -77,6 +93,8 @@ extension AnalyzerSafeRoot {
         let relativePath: String
         let kind: Kind
         let size: Int64
+        let device: dev_t
+        let inode: ino_t
         let exclusion: AnalyzerExclusion?
         /// Link text only; never dereferenced. Nil if unreadable or not a link.
         let symbolicLinkTarget: String?
@@ -152,7 +170,7 @@ extension AnalyzerSafeRoot {
                         }
                     } else { reasons.insert("link_target_unavailable") }
                 }
-                entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, exclusion: exclusion, symbolicLinkTarget: linkTarget))
+                entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, device: info.st_dev, inode: info.st_ino, exclusion: exclusion, symbolicLinkTarget: linkTarget))
                 if kind == .directory && exclusion == nil {
                     let child = openat(directoryFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard child >= 0 else { reasons.insert("directory_unavailable"); continue }
@@ -167,5 +185,60 @@ extension AnalyzerSafeRoot {
         }
         walk(rootFD, prefix: "", depth: 0)
         return Preview(entries: entries, partialReasons: reasons)
+    }
+}
+
+extension AnalyzerSafeRoot {
+    struct FileEvidence {
+        let relativePath: String
+        let size: Int64
+        let modifiedSeconds: Int64
+        let modifiedNanoseconds: Int64
+        let sha256: String
+    }
+
+    struct EvidenceCollection {
+        let preview: Preview
+        let files: [FileEvidence]
+        /// Paths and categories only; no file contents or OS error text.
+        let unreadReasons: [String: String]
+        let partialReasons: Set<String>
+        let cancelled: Bool
+    }
+
+    /// Internal local-only candidate; requires verified approval and storage
+    /// integration before it can be used as a product analysis operation.
+    func collectEvidence(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000,
+                         maximumTotalBytes: Int = 104_857_600, maximumFileBytes: Int = 1_048_576,
+                         maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> EvidenceCollection {
+        guard maximumTotalBytes > 0, maximumTotalBytes <= 104_857_600,
+              maximumFileBytes > 0, maximumFileBytes <= 1_048_576,
+              maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
+        let deadline = ProcessInfo.processInfo.systemUptime + maximumSeconds
+        let scope = try preview(userExcludedPaths: userExcludedPaths, maximumEntries: maximumEntries, maximumSeconds: maximumSeconds)
+        var reasons = scope.partialReasons
+        var unread: [String: String] = [:]
+        var files: [FileEvidence] = []
+        var total = 0
+        var cancelled = false
+        for entry in scope.entries where entry.kind == .regular && entry.exclusion == nil {
+            if isCancelled() { cancelled = true; reasons.insert("cancelled"); break }
+            if ProcessInfo.processInfo.systemUptime >= deadline { reasons.insert("time_limit"); break }
+            if entry.size < 0 { unread[entry.relativePath] = "metadata_unavailable"; reasons.insert("read_incomplete"); continue }
+            if entry.size > maximumFileBytes { unread[entry.relativePath] = "file_limit"; reasons.insert("file_limit"); continue }
+            let remaining = maximumTotalBytes - total
+            if entry.size > remaining || remaining == 0 { unread[entry.relativePath] = "total_limit"; reasons.insert("total_limit"); break }
+            do {
+                let result = try readEvidence(relativePath: entry.relativePath, maximumBytes: min(maximumFileBytes, remaining), userExcludedPaths: userExcludedPaths, expectedDevice: entry.device, expectedInode: entry.inode)
+                total += result.bytes.count
+                files.append(FileEvidence(relativePath: entry.relativePath, size: result.size, modifiedSeconds: result.modifiedSeconds, modifiedNanoseconds: result.modifiedNanoseconds, sha256: result.sha256))
+            } catch {
+                unread[entry.relativePath] = "read_unavailable_or_changed"
+                reasons.insert("read_incomplete")
+            }
+        }
+        // Cancellation after the final read still prevents a complete result.
+        if isCancelled() { cancelled = true; reasons.insert("cancelled") }
+        return EvidenceCollection(preview: scope, files: files, unreadReasons: unread, partialReasons: reasons, cancelled: cancelled)
     }
 }
