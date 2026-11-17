@@ -2,7 +2,12 @@ name: Desktop and Core
 
 on:
   push:
+    branches: [master]
   pull_request:
+
+concurrency:
+  group: desktop-core-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
