@@ -50,6 +50,13 @@ private struct KeyScanner {
             let token = String(decoding: bytes[start..<index], as: UTF8.self)
             if token.first == "-" || token.first?.isNumber == true {
                 guard let number = Double(token), number.isFinite else { throw RawJSONValidationError.unsafeNumber }
+                // Decimal has finite precision; do not let a long mantissa be
+                // rounded down across the safe boundary. This conservative
+                // policy is provisional pending the wire-number decision.
+                let mantissa = token.split(whereSeparator: { $0 == "e" || $0 == "E" }).first ?? ""
+                guard mantissa.utf8.filter({ $0 >= 0x30 && $0 <= 0x39 }).count <= 38 else {
+                    throw RawJSONValidationError.unsafeNumber
+                }
                 // Check the original decimal value too: Double alone rounds large integers.
                 guard let decimal = Decimal(string: token, locale: Locale(identifier: "en_US_POSIX")),
                       !decimal.isNaN else { throw RawJSONValidationError.unsafeNumber }
