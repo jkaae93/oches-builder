@@ -22,3 +22,7 @@ VS Code 공식 문서는 Extension Host가 VS Code와 같은 권한으로 파일
 ## 설치별 인증키
 
 설치별 키의 SecretStorage 후보와 이 저장소가 제공하지 않는 프로세스 격리·비추출 보장, 원격 client-side 저장 범위는 [설치별 인증 설계](CLIENT_INSTALLATION_AUTH_DESIGN.md)를 따른다. `publisher.name`과 Workspace Trust만으로 Core 인가를 대신하지 않는다.
+
+## 설계 동결 · 2026-11-17
+
+P2·P8 확정(로컬만 v1, 원격 v1 미지원). 버전별 검증·제품 지원 실증은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).

@@ -6,15 +6,15 @@
   "additionalProperties": false,
   "required": ["schemaVersion", "definitionId", "revision", "role", "instructions", "inputs", "outputs", "tools", "permissions", "resourceLimits"],
   "properties": {
-    "schemaVersion": {"const": "1.0"},
+    "schemaVersion": {"type": "object", "additionalProperties": false, "required": ["major", "minor"], "properties": {"major": {"const": 1}, "minor": {"const": 0}}},
     "definitionId": {"$ref": "#/$defs/id"},
     "revision": {"type": "integer", "minimum": 1},
     "role": {"$ref": "#/$defs/text"},
     "instructions": {"$ref": "#/$defs/text"},
     "inputs": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/port"}},
     "outputs": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/port"}},
-    "tools": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
-    "permissions": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/permission"}},
+    "tools": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "permissions": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/permission"}},
     "resourceLimits": {
       "type": "object", "additionalProperties": false,
       "required": ["maxDurationSeconds", "maxAttempts"],
@@ -23,7 +23,7 @@
   },
   "$defs": {
     "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
-    "text": {"type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 65536, "pattern": "\\S"},
     "port": {"type": "object", "additionalProperties": false, "required": ["portId", "type", "required"], "properties": {"portId": {"$ref": "#/$defs/id"}, "type": {"enum": ["text", "json", "artifactRef", "control"]}, "required": {"type": "boolean"}}},
     "permission": {"type": "object", "additionalProperties": false, "required": ["action", "scope", "approvalRequired"], "properties": {"action": {"$ref": "#/$defs/id"}, "scope": {"$ref": "#/$defs/text"}, "approvalRequired": {"type": "boolean"}}}
   }

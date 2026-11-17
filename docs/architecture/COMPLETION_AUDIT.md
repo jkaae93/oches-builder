@@ -33,3 +33,7 @@ SQLite 후보에 대한 임시 DB 기초 시험은 [SQLite 검증 기록](SQLITE
 위 1차 표는 최초 작성 당시의 기록이다. 이후 [ARC-11](ARC-11.md)~[ARC-15](ARC-15.md) 상세 설계, [ADR-016](adr/ADR-016-core-contract-baseline.md)/[ADR-017](adr/ADR-017-user-enrolled-client-key.md), [종단 보안 채널](EXTENSION_SECURE_CHANNEL.md), [복구 최신성 기준점](RECOVERY_FRESHNESS_ANCHOR.md), [MVP 기준선·비용 계약](PROVIDER_MVP_FEASIBILITY.md), [요구사항·수용 기준](REQUIREMENTS_ACCEPTANCE.md) 및 45개 단위 계약 시험을 완료해 [설계 평가 기준 정정 및 최종 설계 판정](REVIEW_DESIGN_CRITERIA_CORRECTED.md) 기준 **100/100 (G1~G8 설계 기준 PASS)**을 달성했다.
 
 이에 따라 사용자 요청으로 2026-11-17 GitHub Projects #2의 `[ARC-01]`~`[ARC-15]` Draft Issue 15건 전체 상태를 `Done`으로 업데이트하고 본문 산출물·완료 상태를 동기화했다. 실제 제품 구현과 OS·브라우저·IDE·Provider 런타임 시험은 여전히 **NOT RUN**이며, 로컬 `docs/` 변경물은 아직 커밋·푸시하지 않았다.
+
+## 설계 확정 · 2026-11-17 (Final)
+
+사용자 승인("없어 다 해")으로 [설계 확정 기록](DESIGN_FINALIZATION.md)을 Final 전환했다. ARC별 수치·상한·기본값·스키마 동결값은 해당 문서 §6이 정본이며, gh 15건 본문의 `미확정 사항` 템플릿 문구를 모듈별 확정 문구로 교체했다. [미결정 목록](OPEN_QUESTIONS.md)에 해소 상태를 반영하고 ARC-01~15·관련 계약서의 미결정 문구에 동결 주석을 달았다. 조건부(E5 수치 임계치)·제품게이트·NOT RUN은 해소가 아니다. 커밋·푸시는 별도 승인 대기.

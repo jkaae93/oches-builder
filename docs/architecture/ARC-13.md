@@ -8,7 +8,7 @@
 페이지 수집은 사용자 명시 동작 및 최소 권한을 전제로 하고 범위·출처·시간을 표시한다. 민감 정보 자동 탐지는 완전하지 않다. 외부 Provider 전송은 별도 정책 평가와 사용자 승인 후에만 가능하다. Content Script가 보낸 문서·프레임·탭 정보와 메시지 스키마·크기를 Worker에서 확인하고 출처를 위조할 수 있는 페이지 입력은 불신한다. Host는 정해진 operation만 허용하며 쉘 문자열이나 페이지 제공 실행 파일 경로를 실행하지 않는다.
 
 ## 계약과 복구
-Chrome Native Messaging은 JSON UTF-8에 32비트 native-endian 길이 프레임을 사용한다. 공식 제한은 Host→Chrome 메시지 1 MB, Chrome→Host 64 MiB이며 제품은 더 작은 제한을 두고 넘는 입력을 거부한다. 구체 상한은 검증 전 미정이다. Worker 종료나 port 단절은 실행 종료가 아니다. 재연결 시 ARC-11 재인증과 cursor/snapshot을 사용한다. 메시지 중복은 requestId 계약에 따르며 승인과 외부 실행을 자동 반복하지 않는다. 권한 철회·탭 이동·문서 변경 시 선택 내용을 stale로 표시하고 다시 선택한다.
+Chrome Native Messaging은 JSON UTF-8에 32비트 native-endian 길이 프레임을 사용한다. 공식 제한은 Host→Chrome 메시지 1 MB, Chrome→Host 64 MiB이며 제품은 더 작은 제한을 두고 넘는 입력을 거부한다. 구체 상한은 W1·P7(256 KiB)로 확정([설계 확정 기록](DESIGN_FINALIZATION.md)). Worker 종료나 port 단절은 실행 종료가 아니다. 재연결 시 ARC-11 재인증과 cursor/snapshot을 사용한다. 메시지 중복은 requestId 계약에 따르며 승인과 외부 실행을 자동 반복하지 않는다. 권한 철회·탭 이동·문서 변경 시 선택 내용을 stale로 표시하고 다시 선택한다.
 
 ## 검증 기준
 허용되지 않은 extension 및 위조 메시지 거부, 웹페이지의 직접 실행·승인 0건, 프레임 크기·잘못된 JSON 거부, 수집·전송 승인 분리, Worker 종료 및 cursor 만료 복구, Native Host 교체·키 도용에 대한 ARC-11 게이트를 시험한다. Chrome 버전·OS·설치·스토어 정책은 별도 확인 전 미지원이다. 공식 근거: [Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging), [Message passing security](https://developer.chrome.com/docs/extensions/develop/concepts/messaging).
@@ -24,3 +24,7 @@ Content Script는 Native Messaging API를 직접 호출할 수 없고 Worker를 
 ## 설치별 인증키
 
 Chrome 프로필별 키를 Service Worker Web Crypto와 IndexedDB로 보관하는 후보를 검증한다. 정상 Native Messaging origin 확인, 키 소유 증명, Core 인가는 별개이며 상세·제한은 [설치별 인증 설계](CLIENT_INSTALLATION_AUTH_DESIGN.md)를 따른다. 비추출 속성은 악성 확장 코드의 서명 대리를 막는다는 보장이 아니다.
+
+## 설계 동결 · 2026-11-17
+
+P2·P7 확정. 스토어 심사·런타임 보안 실증은 제품게이트. 정본은 [설계 확정 기록 §6](DESIGN_FINALIZATION.md).
