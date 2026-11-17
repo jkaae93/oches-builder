@@ -9,10 +9,10 @@ final class JSONCanonicalizationTests: XCTestCase {
 
     func testIndependentReferenceVectors() throws {
         let directory = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures/jcs")
-        for name in ["french", "structures", "unicode", "weird"] {
+        for name in ["arrays", "french", "structures", "unicode", "values", "weird"] {
             let input = try Data(contentsOf: directory.appendingPathComponent("\(name).input.json"))
             let expected = try Data(contentsOf: directory.appendingPathComponent("\(name).output.json"))
-            let value = try validateUniqueJSONKeys(input, maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+            let value = try parseJSON(input, maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024, wirePolicy: false)
             XCTAssertEqual(try canonicalizeJSON(value), expected, "vector: \(name)")
         }
     }

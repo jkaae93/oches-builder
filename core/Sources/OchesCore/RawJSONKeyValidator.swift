@@ -22,17 +22,22 @@ public indirect enum RawJSONValue {
 /// still required before any request can be dispatched.
 @discardableResult
 public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws -> RawJSONValue {
+    try parseJSON(data, maximumBytes: maximumBytes, maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes, wirePolicy: true)
+}
+
+// Internal reference-vector entry point; never use in place of the wire policy.
+func parseJSON(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int, wirePolicy: Bool) throws -> RawJSONValue {
     guard maximumBytes > 0, maximumDepth > 0, maximumStringBytes > 0 else { throw RawJSONValidationError.invalidInput }
     guard data.count <= maximumBytes else { throw RawJSONValidationError.limitExceeded }
     guard String(data: data, encoding: .utf8) != nil else { throw RawJSONValidationError.invalidInput }
-    var scanner = KeyScanner(bytes: Array(data), maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes)
+    var scanner = KeyScanner(bytes: Array(data), maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes, wirePolicy: wirePolicy)
     scanner.whitespace()
-    guard scanner.index < scanner.bytes.count, scanner.bytes[scanner.index] == 0x7b else { throw RawJSONValidationError.invalidInput }
+    guard scanner.index < scanner.bytes.count, !wirePolicy || scanner.bytes[scanner.index] == 0x7b else { throw RawJSONValidationError.invalidInput }
     let value = try scanner.value(depth: 0)
     scanner.whitespace()
     guard scanner.index == scanner.bytes.count else { throw RawJSONValidationError.invalidInput }
     // Parse only after bounded scanning; Foundation validates syntax, not duplicate keys.
-    guard let root = try? JSONSerialization.jsonObject(with: data), root is [String: Any] else {
+    guard (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) != nil else {
         throw RawJSONValidationError.invalidInput
     }
     return value
@@ -42,6 +47,7 @@ private struct KeyScanner {
     let bytes: [UInt8]
     let maximumDepth: Int
     let maximumStringBytes: Int
+    let wirePolicy: Bool
     var index = 0
 
     mutating func whitespace() {
@@ -62,6 +68,7 @@ private struct KeyScanner {
             let token = String(decoding: bytes[start..<index], as: UTF8.self)
             if token.first == "-" || token.first?.isNumber == true {
                 guard let number = Double(token), number.isFinite else { throw RawJSONValidationError.unsafeNumber }
+                if !wirePolicy { return .number(token) }
                 // Decimal has finite precision; do not let a long mantissa be
                 // rounded down across the safe boundary. This conservative
                 // policy is provisional pending the wire-number decision.
