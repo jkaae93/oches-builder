@@ -4,13 +4,36 @@
   "title": "Core event envelope version 1 (draft)",
   "description": "Proposed structural boundary only. Event persistence, source ordering, cursor semantics, access control and operation-specific payloads require their owning modules and are not implemented by this schema.",
   "type": "object",
-  "required": ["eventId", "sourceId", "sequence", "kind", "payload"],
+  "required": [
+    "eventId",
+    "sourceId",
+    "sequence",
+    "kind",
+    "payload"
+  ],
   "properties": {
-    "eventId": {"type": "string", "minLength": 1},
-    "sourceId": {"type": "string", "minLength": 1},
-    "sequence": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
-    "kind": {"type": "string", "minLength": 1},
-    "payload": {"type": "object"}
+    "eventId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "not": {
+        "pattern": "[^0-9]"
+      }
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object"
+    }
   },
   "additionalProperties": false
 }

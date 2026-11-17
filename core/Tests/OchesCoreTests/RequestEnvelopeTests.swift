@@ -12,6 +12,14 @@ final class RequestEnvelopeTests: XCTestCase {
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"query","payload":{}}"#)
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"12"}}"#)
     }
+    func testRevisionRequiresCanonicalDecimalString() throws {
+        let base = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"0"}}"#
+        try validate(base)
+        for revision in ["00", "-1", "1\\n", "1a"] {
+            XCTAssertThrowsError(try validate(base.replacingOccurrences(of: #""revision":"0""#, with: "\"revision\":\"\(revision)\"")))
+        }
+    }
+
     func testVersionCannotRoundFractionToInteger() throws {
         let base = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"q","payload":{}}"#
         try validate(base.replacingOccurrences(of: #""protocolMajor":1"#, with: #""protocolMajor":1.0"#))

@@ -4,27 +4,80 @@
   "title": "Core request envelope version 1 (draft)",
   "description": "Structural schema only. Authentication, strict raw JSON validation, negotiated minor, operation-specific payloads, authorization, approval and idempotency are separate mandatory checks.",
   "type": "object",
-  "required": ["protocolMajor", "protocolMinor", "clientId", "workspaceId", "requestId", "operation", "payload"],
+  "required": [
+    "protocolMajor",
+    "protocolMinor",
+    "clientId",
+    "workspaceId",
+    "requestId",
+    "operation",
+    "payload"
+  ],
   "properties": {
-    "protocolMajor": {"const": 1},
-    "protocolMinor": {"type": "integer", "minimum": 0, "maximum": 4294967295},
-    "clientId": {"type": "string", "minLength": 1},
-    "workspaceId": {"type": "string", "minLength": 1},
-    "requestId": {"type": "string", "minLength": 1},
-    "operation": {"type": "string", "minLength": 1},
-    "payload": {"type": "object"},
-    "expectedRevision": {"$ref": "#/$defs/revisionRef"},
-    "approvalRefs": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1}
+    "protocolMajor": {
+      "const": 1
+    },
+    "protocolMinor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "clientId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object"
+    },
+    "expectedRevision": {
+      "$ref": "#/$defs/revisionRef"
+    },
+    "approvalRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    }
   },
   "additionalProperties": false,
   "$defs": {
     "revisionRef": {
       "type": "object",
-      "required": ["objectId", "storeGeneration", "revision"],
+      "required": [
+        "objectId",
+        "storeGeneration",
+        "revision"
+      ],
       "properties": {
-        "objectId": {"type": "string", "minLength": 1},
-        "storeGeneration": {"type": "string", "minLength": 1},
-        "revision": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}
+        "objectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storeGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "not": {
+            "pattern": "[^0-9]"
+          }
+        }
       },
       "additionalProperties": false
     }
