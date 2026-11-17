@@ -49,6 +49,13 @@ class SchemaTests(unittest.TestCase):
         self.assertFalse(validator.is_valid({"requestId": "r", "result": {"ok": {}}, "revision": {**revision, "storeGeneration": ""}}))
         self.assertFalse(validator.is_valid({"requestId": "r", "result": {"ok": {}}, "revision": None}))
 
+    def test_shared_event_cases(self):
+        validator = schema("event")
+        path = ROOT.parent / "Tests/OchesCoreTests/Fixtures/envelopes/event-cases.json"
+        for case in json.loads(path.read_text()):
+            with self.subTest(case=case["name"]):
+                self.assertEqual(validator.is_valid(case["event"]), case["valid"])
+
     def test_event_sequence(self):
         validator = schema("event")
         event = {"eventId": "e", "sourceId": "s", "sequence": "0", "kind": "example", "payload": {}}
