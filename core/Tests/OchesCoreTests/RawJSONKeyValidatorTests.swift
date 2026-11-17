@@ -28,7 +28,7 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0"] {
             try check(Data("{\"n\":\(token)}".utf8))
         }
-        for token in ["9007199254740992", "9007199254740993", "-9007199254740992", "9.007199254740992e15", "1e400", "9007199254740991.000000000000000000000000000000000001"] {
+        for token in ["9007199254740992", "9007199254740993", "-9007199254740992", "9.007199254740992e15", "1e400", "1e-324", "-1e-324", "9007199254740991.000000000000000000000000000000000001"] {
             XCTAssertThrowsError(try check(Data("{\"n\":\(token)}".utf8))) { error in
                 XCTAssertEqual(error as? RawJSONValidationError, .unsafeNumber)
             }

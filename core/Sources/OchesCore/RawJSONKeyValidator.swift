@@ -84,6 +84,8 @@ private struct KeyScanner {
                 // Check the original decimal value too: Double alone rounds large integers.
                 guard let decimal = Decimal(string: token, locale: Locale(identifier: "en_US_POSIX")),
                       !decimal.isNaN else { throw RawJSONValidationError.unsafeNumber }
+                // Do not silently turn a nonzero wire value into zero before JCS.
+                guard number != 0 || decimal == 0 else { throw RawJSONValidationError.unsafeNumber }
                 let limit = Decimal(9_007_199_254_740_991 as Int64)
                 guard decimal <= limit && decimal >= -limit else { throw RawJSONValidationError.unsafeNumber }
                 return .number(token)
