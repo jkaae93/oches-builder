@@ -57,6 +57,15 @@ final class AnalyzerXPCPeerBoundaryTests: XCTestCase {
         withExtendedLifetime(delegate) {}
     }
 
+    func testServiceProbeRejectsInvalidServiceAndUnavailableService() throws {
+        XCTAssertThrowsError(try AnalyzerXPCProbeClient(serviceName: "bad\"name", teamID: "TEAM", signingIdentifier: "com.example.core"))
+        let client = try AnalyzerXPCProbeClient(serviceName: "com.oches.test.no-such-service", teamID: "TEAM", signingIdentifier: "com.example.core")
+        defer { client.invalidate() }
+        let rejected = expectation(description: "missing Core service fails closed")
+        client.readiness(onError: { _ in rejected.fulfill() }, reply: { _ in XCTFail("missing service replied") })
+        wait(for: [rejected], timeout: 5)
+    }
+
     func testActualXPCRejectsPeerWithoutRequiredSignature() throws {
         let delegate = try AnalyzerXPCPeerBoundary(teamID: "NONEXISTENTTEAM", signingIdentifier: "com.example.must.not.match", expectedUID: getuid())
         let listener = NSXPCListener.anonymous()

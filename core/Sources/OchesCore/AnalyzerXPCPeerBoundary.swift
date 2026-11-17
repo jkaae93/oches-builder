@@ -56,6 +56,17 @@ final class AnalyzerXPCProbeClient {
         self.connection = connection
     }
 
+    init(serviceName: String, teamID: String, signingIdentifier: String) throws {
+        // Reject service-name injection before creating an endpoint.
+        _ = try analyzerPeerRequirement(teamID: teamID, signingIdentifier: serviceName)
+        let requirement = try analyzerPeerRequirement(teamID: teamID, signingIdentifier: signingIdentifier)
+        let connection = NSXPCConnection(serviceName: serviceName)
+        connection.remoteObjectInterface = NSXPCInterface(with: AnalyzerXPCReadinessProtocol.self)
+        connection.setCodeSigningRequirement(requirement)
+        connection.resume()
+        self.connection = connection
+    }
+
     func readiness(onError: @escaping (Error) -> Void, reply: @escaping (String) -> Void) {
         guard let proxy = connection.remoteObjectProxyWithErrorHandler(onError) as? AnalyzerXPCReadinessProtocol else {
             onError(XPCIdentityError.unauthenticatedRequestDenied)
