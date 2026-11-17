@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:oches:prototype:agent-definition:1.0",
+  "title": "AgentDefinition v1.0 validation experiment, not a product schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "definitionId", "revision", "role", "instructions", "inputs", "outputs", "tools", "permissions", "resourceLimits"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "definitionId": {"$ref": "#/$defs/id"},
+    "revision": {"type": "integer", "minimum": 1},
+    "role": {"$ref": "#/$defs/text"},
+    "instructions": {"$ref": "#/$defs/text"},
+    "inputs": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/port"}},
+    "outputs": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/port"}},
+    "tools": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "permissions": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/permission"}},
+    "resourceLimits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxDurationSeconds", "maxAttempts"],
+      "properties": {"maxDurationSeconds": {"type": "integer", "minimum": 1, "maximum": 86400}, "maxAttempts": {"type": "integer", "minimum": 1, "maximum": 100}}
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 8192, "pattern": "\\S"},
+    "port": {"type": "object", "additionalProperties": false, "required": ["portId", "type", "required"], "properties": {"portId": {"$ref": "#/$defs/id"}, "type": {"enum": ["text", "json", "artifactRef", "control"]}, "required": {"type": "boolean"}}},
+    "permission": {"type": "object", "additionalProperties": false, "required": ["action", "scope", "approvalRequired"], "properties": {"action": {"$ref": "#/$defs/id"}, "scope": {"$ref": "#/$defs/text"}, "approvalRequired": {"type": "boolean"}}}
+  }
+}
