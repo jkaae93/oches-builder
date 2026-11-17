@@ -4,6 +4,7 @@ from pathlib import Path
 import unittest
 
 from jsonschema import Draft202012Validator
+from generate_number_cases import generate_cases
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,6 +16,10 @@ def schema(name):
 
 
 class SchemaTests(unittest.TestCase):
+    def test_numeric_fixture_matches_independent_oracle(self):
+        path = ROOT.parent / "Tests/OchesCoreTests/Fixtures/envelopes/numeric-cases.json"
+        self.assertEqual(json.loads(path.read_text()), generate_cases())
+
     def test_shared_request_cases(self):
         validator = schema("request")
         path = ROOT.parent / "Tests/OchesCoreTests/Fixtures/envelopes/request-cases.json"
