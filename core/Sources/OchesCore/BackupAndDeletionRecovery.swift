@@ -168,6 +168,12 @@ public final class DeletionRequestLifecycle: @unchecked Sendable {
                 try store.bindText(delState, index: 1, value: targetID)
                 guard sqlite3_step(delState) == SQLITE_DONE else { throw StorageError.unavailable("delete state failed") }
 
+                let delProfile = try store.prepare("DELETE FROM profile_revisions WHERE workspace_id = ? AND object_id = ?")
+                defer { sqlite3_finalize(delProfile) }
+                try store.bindText(delProfile, index: 1, value: store.workspaceID)
+                try store.bindText(delProfile, index: 2, value: targetID)
+                guard sqlite3_step(delProfile) == SQLITE_DONE else { throw StorageError.unavailable("delete profile history failed") }
+
                 let delEvents = try store.prepare("DELETE FROM event_log WHERE object_id = ?")
                 defer { sqlite3_finalize(delEvents) }
                 try store.bindText(delEvents, index: 1, value: targetID)
@@ -373,6 +379,13 @@ public final class BackupAndRecoveryManager: @unchecked Sendable {
                         try restoredStore.bindText(delState, index: 1, value: entry.intent.targetID)
                         guard sqlite3_step(delState) == SQLITE_DONE else {
                             throw StorageError.unavailable("replay delete state failed")
+                        }
+                        let delProfile = try restoredStore.prepare("DELETE FROM profile_revisions WHERE workspace_id = ? AND object_id = ?")
+                        defer { sqlite3_finalize(delProfile) }
+                        try restoredStore.bindText(delProfile, index: 1, value: manifest.workspaceID)
+                        try restoredStore.bindText(delProfile, index: 2, value: entry.intent.targetID)
+                        guard sqlite3_step(delProfile) == SQLITE_DONE else {
+                            throw StorageError.unavailable("replay delete profile history failed")
                         }
                         if try tableExists(restoredStore, name: "derived_index") {
                             let delIdx = try restoredStore.prepare("DELETE FROM derived_index WHERE target_id = ?")

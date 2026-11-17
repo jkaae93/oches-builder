@@ -189,6 +189,7 @@ final class FreshnessAnchorRecoveryTests: XCTestCase {
             responseJSON: "{}",
             nowEpochSeconds: 1000
         ))
+        try store.executeRawForTesting("INSERT INTO profile_revisions (workspace_id, object_id, revision, payload_json, committed_at) VALUES ('ws-1', 'secret-doc-1', 1, '{\"synthetic\":true}', 1000)")
         try registry.registerClient(RegisteredClientRecord(
             clientID: "client-to-revoke",
             signingKeyID: "ck-1",
@@ -315,6 +316,13 @@ final class FreshnessAnchorRecoveryTests: XCTestCase {
         XCTAssertThrowsError(try restoredStore.readSnapshot(workspaceID: "ws-1", objectID: "secret-doc-1")) { error in
             XCTAssertEqual(error as? StorageError, .notFound)
         }
+        let restoredProfileCount = try restoredStore.withConnectionLock { _ -> Int32 in
+            let stmt = try restoredStore.prepare("SELECT COUNT(*) FROM profile_revisions WHERE workspace_id = 'ws-1' AND object_id = 'secret-doc-1'")
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW else { throw StorageError.unavailable("count failed") }
+            return sqlite3_column_int(stmt, 0)
+        }
+        XCTAssertEqual(restoredProfileCount, 0)
 
         // Client revocation was replayed
         let restoredRegistry = try ClientIdentityAndKeyRegistry(store: restoredStore, keyStore: keyStore)

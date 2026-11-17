@@ -2,29 +2,29 @@ import Foundation
 
 /// An in-memory candidate, not an approved or durably saved Profile. A revision
 /// is assigned only by the storage transaction that actually commits a profile.
-struct AnalyzerProfileDraft {
-    enum State: String { case complete, partial, cancelled }
+struct AnalyzerProfileDraft: Codable {
+    enum State: String, Codable { case complete, partial, cancelled }
     enum EvidenceComparison: Equatable {
         case changed(paths: [String])
         case indeterminate
     }
-    struct Evidence {
+    struct Evidence: Codable {
         let relativePath: String
         let size: Int64
         let modifiedSeconds: Int64
         let modifiedNanoseconds: Int64
         let sha256: String
     }
-    struct Observation {
+    struct Observation: Codable {
         let kind: String
         let value: String
         let evidencePath: String
     }
-    struct Inference {
+    struct Inference: Codable {
         let value: String
         let evidencePaths: [String]
     }
-    struct Skipped {
+    struct Skipped: Codable {
         let relativePath: String
         let reason: String
         let size: Int64
