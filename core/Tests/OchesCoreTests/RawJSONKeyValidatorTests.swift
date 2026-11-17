@@ -85,6 +85,19 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testIndependentInvalidJSONSuite() throws {
+        let root = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures/json-test-suite")
+        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("n_") && $0.pathExtension == "json" }
+        XCTAssertGreaterThan(files.count, 100)
+        for file in files {
+            var wrapped = Data(#"{"value":"#.utf8)
+            wrapped.append(try Data(contentsOf: file))
+            wrapped.append(Data("}".utf8))
+            XCTAssertThrowsError(try validateUniqueJSONKeys(wrapped, maximumBytes: 1_048_576, maximumDepth: 128, maximumStringBytes: 262_144), file.lastPathComponent)
+        }
+    }
+
     func testRejectsMalformedJSONGrammar() {
         let malformed = [
             #"{"x":TRUE}"#, #"{"x":nul}"#, #"{"x":falsex}"#,
