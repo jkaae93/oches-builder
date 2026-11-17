@@ -70,3 +70,102 @@ final class AnalyzerSafeRoot {
         return result
     }
 }
+
+extension AnalyzerSafeRoot {
+    struct PreviewEntry {
+        enum Kind { case regular, directory, symbolicLink, other }
+        let relativePath: String
+        let kind: Kind
+        let size: Int64
+        let exclusion: AnalyzerExclusion?
+        /// Link text only; never dereferenced. Nil if unreadable or not a link.
+        let symbolicLinkTarget: String?
+    }
+
+    struct Preview {
+        let entries: [PreviewEntry]
+        /// A partial result never asserts a complete inventory.
+        let partialReasons: Set<String>
+    }
+
+    /// Internal metadata-only traversal. No content is read and no link followed.
+    /// A caller still needs a verified workspace and policy before presenting it.
+    func preview(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300) throws -> Preview {
+        guard maximumEntries > 0, maximumEntries <= 10_000, maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
+        // Validate every user rule even for an empty directory.
+        _ = try AnalyzerExclusions.classify(relativePath: "validation", userExcludedPaths: userExcludedPaths)
+        let deadline = ProcessInfo.processInfo.systemUptime + maximumSeconds
+        var entries: [PreviewEntry] = []
+        var reasons = Set<String>()
+
+        func walk(_ directoryFD: Int32, prefix: String, depth: Int) {
+            guard depth <= 64 else { reasons.insert("depth_limit"); return }
+            guard reasons.isDisjoint(with: ["entry_limit", "time_limit"]) else { return }
+            // dup shares the directory offset; openat creates an independent stream
+            // so repeated previews do not accidentally start at end-of-directory.
+            let streamFD = openat(directoryFD, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+            guard streamFD >= 0, let stream = fdopendir(streamFD) else {
+                if streamFD >= 0 { close(streamFD) }
+                reasons.insert("directory_unavailable")
+                return
+            }
+            defer { closedir(stream) }
+            while true {
+                if ProcessInfo.processInfo.systemUptime >= deadline { reasons.insert("time_limit"); return }
+                errno = 0
+                guard let entry = readdir(stream) else {
+                    if errno != 0 { reasons.insert("directory_unavailable") }
+                    return
+                }
+                let name = withUnsafePointer(to: &entry.pointee.d_name) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(NAME_MAX) + 1) { String(validatingUTF8: $0) }
+                }
+                guard let name else { reasons.insert("invalid_filename"); continue }
+                if name == "." || name == ".." { continue }
+                if entries.count >= maximumEntries { reasons.insert("entry_limit"); return }
+                let relativePath = prefix.isEmpty ? name : prefix + "/" + name
+                let exclusion: AnalyzerExclusion?
+                do { exclusion = try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) }
+                catch { reasons.insert("invalid_filename"); continue }
+                var info = stat()
+                guard fstatat(directoryFD, name, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                    reasons.insert("entry_unavailable")
+                    continue
+                }
+                let type = info.st_mode & S_IFMT
+                let kind: PreviewEntry.Kind = type == S_IFREG ? .regular : type == S_IFDIR ? .directory : type == S_IFLNK ? .symbolicLink : .other
+                var linkTarget: String?
+                if kind == .symbolicLink {
+                    var buffer = [CChar](repeating: 0, count: 4096)
+                    let length = readlinkat(directoryFD, name, &buffer, buffer.count)
+                    if length >= 0 && length < buffer.count {
+                        linkTarget = buffer.withUnsafeBufferPointer { pointer in
+                            String(bytes: UnsafeRawBufferPointer(start: pointer.baseAddress, count: length), encoding: .utf8)
+                        }
+                        if linkTarget == nil { reasons.insert("link_target_unavailable") }
+                        var linkAfter = stat()
+                        if fstatat(directoryFD, name, &linkAfter, AT_SYMLINK_NOFOLLOW) != 0 ||
+                            linkAfter.st_dev != info.st_dev || linkAfter.st_ino != info.st_ino ||
+                            linkAfter.st_ctimespec.tv_sec != info.st_ctimespec.tv_sec || linkAfter.st_ctimespec.tv_nsec != info.st_ctimespec.tv_nsec {
+                            linkTarget = nil
+                            reasons.insert("path_changed")
+                        }
+                    } else { reasons.insert("link_target_unavailable") }
+                }
+                entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, exclusion: exclusion, symbolicLinkTarget: linkTarget))
+                if kind == .directory && exclusion == nil {
+                    let child = openat(directoryFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                    guard child >= 0 else { reasons.insert("directory_unavailable"); continue }
+                    // Ensure the object enumerated is the one opened, or report a race.
+                    var opened = stat()
+                    if fstat(child, &opened) == 0 && opened.st_dev == info.st_dev && opened.st_ino == info.st_ino {
+                        walk(child, prefix: relativePath, depth: depth + 1)
+                    } else { reasons.insert("path_changed") }
+                    close(child)
+                }
+            }
+        }
+        walk(rootFD, prefix: "", depth: 0)
+        return Preview(entries: entries, partialReasons: reasons)
+    }
+}

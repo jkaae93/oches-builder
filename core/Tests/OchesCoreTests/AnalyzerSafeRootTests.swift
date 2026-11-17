@@ -88,3 +88,33 @@ final class AnalyzerSafeRootTests: XCTestCase {
         XCTAssertThrowsError(try scanner.read(relativePath: "dirlink", maximumBytes: 100))
     }
 }
+
+extension AnalyzerSafeRootTests {
+    func testPreviewSkipsExcludedDirectoriesAndLinksAndIsRepeatable() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = base.appendingPathComponent("root")
+        let outside = base.appendingPathComponent("outside")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("src"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        try Data("a".utf8).write(to: root.appendingPathComponent("src/main.swift"))
+        try Data("hidden".utf8).write(to: root.appendingPathComponent(".git/config"))
+        try Data("outside".utf8).write(to: outside.appendingPathComponent("marker"))
+        try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("link").path, withDestinationPath: outside.path)
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        for _ in 0..<2 {
+            let preview = try scanner.preview()
+            let paths = Set(preview.entries.map(\.relativePath))
+            XCTAssertTrue(paths.contains("src/main.swift"))
+            XCTAssertTrue(paths.contains(".git"))
+            XCTAssertFalse(paths.contains(".git/config"))
+            XCTAssertFalse(paths.contains("link/marker"))
+            XCTAssertTrue(preview.entries.contains { $0.relativePath == "link" && $0.kind == .symbolicLink && $0.symbolicLinkTarget == outside.path })
+            XCTAssertTrue(preview.partialReasons.isEmpty)
+        }
+        let limited = try scanner.preview(maximumEntries: 1)
+        XCTAssertEqual(limited.entries.count, 1)
+        XCTAssertTrue(limited.partialReasons.contains("entry_limit"))
+    }
+}
