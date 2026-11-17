@@ -1,6 +1,8 @@
 import Foundation
 
 struct ValidatedEventEnvelope {
+    // Structural validation does not imply the event was persisted or authorized.
+    let original: RawJSONValue
     let eventID: String
     let sourceID: String
     let sequence: String
@@ -21,5 +23,5 @@ func validateEventEnvelope(_ value: RawJSONValue) throws -> ValidatedEventEnvelo
           sequence == "0" || (sequence.first.map { $0 >= "1" && $0 <= "9" } == true && sequence.utf8.allSatisfy { $0 >= 48 && $0 <= 57 }),
           case .string(let kind) = field("kind"), !kind.isEmpty,
           let payload = field("payload"), case .object = payload else { throw RequestEnvelopeError.invalidInput }
-    return ValidatedEventEnvelope(eventID: eventID, sourceID: sourceID, sequence: sequence, kind: kind, payload: payload)
+    return ValidatedEventEnvelope(original: value, eventID: eventID, sourceID: sourceID, sequence: sequence, kind: kind, payload: payload)
 }

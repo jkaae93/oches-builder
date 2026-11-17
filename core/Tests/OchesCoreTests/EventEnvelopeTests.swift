@@ -28,6 +28,7 @@ final class EventEnvelopeTests: XCTestCase {
         XCTAssertEqual(event.sourceID, "s")
         XCTAssertEqual(event.sequence, "9007199254740993")
         XCTAssertEqual(String(decoding: try canonicalizeJSON(event.payload), as: UTF8.self), #"{"n":null}"#)
+        XCTAssertEqual(String(decoding: try canonicalizeJSON(event.original), as: UTF8.self), #"{"eventId":"e","kind":"k","payload":{"n":null},"sequence":"9007199254740993","sourceId":"s"}"#)
     }
 
     func testRejectsInvalidSequenceAndExtraFields() {
