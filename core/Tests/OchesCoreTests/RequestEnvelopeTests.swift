@@ -33,10 +33,20 @@ final class RequestEnvelopeTests: XCTestCase {
         let request = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g1","revision":"12"}}"#
         func reference(_ text: String) throws -> RevisionRef? {
             let value = try validateUniqueJSONKeys(Data(text.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
-            return try validateRequestEnvelope(value, negotiated: version)
+            return try validateRequestEnvelope(value, negotiated: version).expectedRevision
         }
         XCTAssertEqual(try reference(request), RevisionRef(objectID: "o", storeGeneration: "g1", revision: "12"))
         XCTAssertNotEqual(try reference(request), try reference(request.replacingOccurrences(of: "g1", with: "g2")))
+    }
+
+    func testValidatedIdentifiersPreserveOriginalBytes() throws {
+        let request = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"client","workspaceId":"workspace","requestId":"e\u0301","operation":"query","payload":{}}"#
+        let value = try validateUniqueJSONKeys(Data(request.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+        let envelope = try validateRequestEnvelope(value, negotiated: version)
+        XCTAssertEqual(Array(envelope.requestID.utf8), Array("e\u{301}".utf8))
+        XCTAssertEqual(envelope.clientID, "client")
+        XCTAssertEqual(envelope.workspaceID, "workspace")
+        XCTAssertEqual(envelope.operation, "query")
     }
 
     func testRevisionRequiresCanonicalDecimalString() throws {

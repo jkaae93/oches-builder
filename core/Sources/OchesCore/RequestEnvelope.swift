@@ -5,10 +5,18 @@ public enum RequestEnvelopeError: Error, Equatable {
     case versionUnsupported
 }
 
+struct ValidatedRequestEnvelope {
+    let clientID: String
+    let workspaceID: String
+    let requestID: String
+    let operation: String
+    let expectedRevision: RevisionRef?
+}
+
 /// Structural validation only. It does not authenticate, authorize, validate
 /// operation payloads, or make a request eligible for dispatch.
 @discardableResult
-func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws -> RevisionRef? {
+func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws -> ValidatedRequestEnvelope {
     guard case .object(let members) = value else { throw RequestEnvelopeError.invalidInput }
     guard Set(members.map { Data($0.0.utf8) }).count == members.count else { throw RequestEnvelopeError.invalidInput }
     func field(_ name: String) -> RawJSONValue? {
@@ -35,8 +43,11 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
         return !text.isEmpty
     }
     guard let major = integer(field("protocolMajor")), let minor = integer(field("protocolMinor")),
-          nonempty(field("clientId")), nonempty(field("workspaceId")), nonempty(field("requestId")),
-          nonempty(field("operation")), case .object = field("payload") else { throw RequestEnvelopeError.invalidInput }
+          case .string(let clientID) = field("clientId"), !clientID.isEmpty,
+          case .string(let workspaceID) = field("workspaceId"), !workspaceID.isEmpty,
+          case .string(let requestID) = field("requestId"), !requestID.isEmpty,
+          case .string(let operation) = field("operation"), !operation.isEmpty,
+          case .object = field("payload") else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
     var expectedRevision: RevisionRef?
     if let revision = field("expectedRevision") {
@@ -53,5 +64,5 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
     if let approvals = field("approvalRefs") {
         guard case .array(let refs) = approvals, !refs.isEmpty, refs.allSatisfy({ nonempty($0) }) else { throw RequestEnvelopeError.invalidInput }
     }
-    return expectedRevision
+    return ValidatedRequestEnvelope(clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, expectedRevision: expectedRevision)
 }
