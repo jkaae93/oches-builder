@@ -7,7 +7,7 @@ public enum RequestEnvelopeError: Error, Equatable {
 
 /// Structural validation only. It does not authenticate, authorize, validate
 /// operation payloads, or make a request eligible for dispatch.
-public func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws {
+func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws {
     guard case .object(let members) = value else { throw RequestEnvelopeError.invalidInput }
     guard Set(members.map { Data($0.0.utf8) }).count == members.count else { throw RequestEnvelopeError.invalidInput }
     func field(_ name: String) -> RawJSONValue? {

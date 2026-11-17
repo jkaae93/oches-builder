@@ -8,7 +8,7 @@ public enum RawJSONValidationError: Error, Equatable {
 }
 
 /// JSON objects retain ordered members instead of using Swift String-keyed maps.
-public indirect enum RawJSONValue {
+indirect enum RawJSONValue {
     case object([(String, RawJSONValue)])
     case array([RawJSONValue])
     case string(String)
@@ -21,7 +21,7 @@ public indirect enum RawJSONValue {
 /// a complete wire validator: schema and JCS checks are
 /// still required before any request can be dispatched.
 @discardableResult
-public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws -> RawJSONValue {
+func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws -> RawJSONValue {
     try parseJSON(data, maximumBytes: maximumBytes, maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes, wirePolicy: true)
 }
 

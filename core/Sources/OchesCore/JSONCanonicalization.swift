@@ -9,7 +9,7 @@ public enum CanonicalizationError: Error {
 }
 
 /// Canonicalizes a validated value; this does not authenticate or authorize it.
-public func canonicalizeJSON(_ value: RawJSONValue) throws -> Data {
+func canonicalizeJSON(_ value: RawJSONValue) throws -> Data {
     guard let context = JSContext(), let stringify = context.evaluateScript("JSON.stringify") else {
         throw CanonicalizationError.javascriptUnavailable
     }
@@ -56,6 +56,6 @@ public func canonicalizeJSON(_ value: RawJSONValue) throws -> Data {
     return Data(try encode(value).utf8)
 }
 
-public func canonicalSHA256(_ value: RawJSONValue) throws -> Data {
+func canonicalSHA256(_ value: RawJSONValue) throws -> Data {
     Data(SHA256.hash(data: try canonicalizeJSON(value)))
 }
