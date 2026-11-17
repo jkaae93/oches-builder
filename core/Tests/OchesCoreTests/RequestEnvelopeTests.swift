@@ -29,6 +29,16 @@ final class RequestEnvelopeTests: XCTestCase {
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"query","payload":{}}"#)
         try validate(#"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"12"}}"#)
     }
+    func testValidatedRevisionIncludesGeneration() throws {
+        let request = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g1","revision":"12"}}"#
+        func reference(_ text: String) throws -> RevisionRef? {
+            let value = try validateUniqueJSONKeys(Data(text.utf8), maximumBytes: 4096, maximumDepth: 16, maximumStringBytes: 1024)
+            return try validateRequestEnvelope(value, negotiated: version)
+        }
+        XCTAssertEqual(try reference(request), RevisionRef(objectID: "o", storeGeneration: "g1", revision: "12"))
+        XCTAssertNotEqual(try reference(request), try reference(request.replacingOccurrences(of: "g1", with: "g2")))
+    }
+
     func testRevisionRequiresCanonicalDecimalString() throws {
         let base = #"{"protocolMajor":1,"protocolMinor":0,"clientId":"c","workspaceId":"w","requestId":"r","operation":"write","payload":{},"expectedRevision":{"objectId":"o","storeGeneration":"g","revision":"0"}}"#
         try validate(base)

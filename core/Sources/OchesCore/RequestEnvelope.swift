@@ -7,7 +7,8 @@ public enum RequestEnvelopeError: Error, Equatable {
 
 /// Structural validation only. It does not authenticate, authorize, validate
 /// operation payloads, or make a request eligible for dispatch.
-func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws {
+@discardableResult
+func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws -> RevisionRef? {
     guard case .object(let members) = value else { throw RequestEnvelopeError.invalidInput }
     guard Set(members.map { Data($0.0.utf8) }).count == members.count else { throw RequestEnvelopeError.invalidInput }
     func field(_ name: String) -> RawJSONValue? {
@@ -35,16 +36,20 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
           nonempty(field("clientId")), nonempty(field("workspaceId")), nonempty(field("requestId")),
           nonempty(field("operation")), case .object = field("payload") else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
+    var expectedRevision: RevisionRef?
     if let revision = field("expectedRevision") {
         guard case .object(let parts) = revision, parts.count == 3, Set(parts.map { Data($0.0.utf8) }).count == 3 else { throw RequestEnvelopeError.invalidInput }
         func part(_ name: String) -> RawJSONValue? { parts.first { $0.0.utf8.elementsEqual(name.utf8) }?.1 }
-        guard nonempty(part("objectId")), nonempty(part("storeGeneration")),
+        guard case .string(let objectID) = part("objectId"), !objectID.isEmpty,
+              case .string(let generation) = part("storeGeneration"), !generation.isEmpty,
               case .string(let number) = part("revision"),
               number == "0" || (number.first.map { $0 >= "1" && $0 <= "9" } == true && number.utf8.allSatisfy { $0 >= 48 && $0 <= 57 }) else {
             throw RequestEnvelopeError.invalidInput
         }
+        expectedRevision = RevisionRef(objectID: objectID, storeGeneration: generation, revision: number)
     }
     if let approvals = field("approvalRefs") {
         guard case .array(let refs) = approvals, !refs.isEmpty, refs.allSatisfy({ nonempty($0) }) else { throw RequestEnvelopeError.invalidInput }
     }
+    return expectedRevision
 }
