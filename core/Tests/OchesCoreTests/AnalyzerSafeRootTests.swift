@@ -138,6 +138,7 @@ extension AnalyzerSafeRootTests {
         let cancelled = try scanner.collectEvidence(isCancelled: { true })
         XCTAssertTrue(cancelled.cancelled)
         XCTAssertTrue(cancelled.files.isEmpty)
+        XCTAssertTrue(cancelled.preview.entries.isEmpty)
     }
 
     func testReplacedRegularFileAndAggregateLimit() throws {

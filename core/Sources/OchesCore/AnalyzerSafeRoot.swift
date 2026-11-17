@@ -81,7 +81,7 @@ final class AnalyzerSafeRoot {
               before.st_size == after.st_size, before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
               before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
               before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
-              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec, after.st_nlink == 1,
               Int64(result.count) == after.st_size else { throw AccessError.changedDuringRead }
         return ReadEvidence(bytes: result, size: after.st_size, modifiedSeconds: Int64(after.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(after.st_mtimespec.tv_nsec), sha256: SHA256.hash(data: result).map { String(format: "%02x", $0) }.joined())
     }
@@ -95,6 +95,8 @@ extension AnalyzerSafeRoot {
         let size: Int64
         let device: dev_t
         let inode: ino_t
+        let modifiedSeconds: Int64
+        let modifiedNanoseconds: Int64
         let exclusion: AnalyzerExclusion?
         /// Link text only; never dereferenced. Nil if unreadable or not a link.
         let symbolicLinkTarget: String?
@@ -108,7 +110,7 @@ extension AnalyzerSafeRoot {
 
     /// Internal metadata-only traversal. No content is read and no link followed.
     /// A caller still needs a verified workspace and policy before presenting it.
-    func preview(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300) throws -> Preview {
+    func preview(userExcludedPaths: Set<String> = [], maximumEntries: Int = 10_000, maximumSeconds: TimeInterval = 300, isCancelled: () -> Bool = { false }) throws -> Preview {
         guard maximumEntries > 0, maximumEntries <= 10_000, maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
         // Validate every user rule even for an empty directory.
         _ = try AnalyzerExclusions.classify(relativePath: "validation", userExcludedPaths: userExcludedPaths)
@@ -118,7 +120,7 @@ extension AnalyzerSafeRoot {
 
         func walk(_ directoryFD: Int32, prefix: String, depth: Int) {
             guard depth <= 64 else { reasons.insert("depth_limit"); return }
-            guard reasons.isDisjoint(with: ["entry_limit", "time_limit"]) else { return }
+            guard reasons.isDisjoint(with: ["entry_limit", "time_limit", "cancelled"]) else { return }
             // dup shares the directory offset; openat creates an independent stream
             // so repeated previews do not accidentally start at end-of-directory.
             let streamFD = openat(directoryFD, ".", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -129,6 +131,7 @@ extension AnalyzerSafeRoot {
             }
             defer { closedir(stream) }
             while true {
+                if isCancelled() { reasons.insert("cancelled"); return }
                 if ProcessInfo.processInfo.systemUptime >= deadline { reasons.insert("time_limit"); return }
                 errno = 0
                 guard let entry = readdir(stream) else {
@@ -170,7 +173,7 @@ extension AnalyzerSafeRoot {
                         }
                     } else { reasons.insert("link_target_unavailable") }
                 }
-                entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, device: info.st_dev, inode: info.st_ino, exclusion: exclusion, symbolicLinkTarget: linkTarget))
+                entries.append(PreviewEntry(relativePath: relativePath, kind: kind, size: info.st_size, device: info.st_dev, inode: info.st_ino, modifiedSeconds: Int64(info.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec), exclusion: exclusion, symbolicLinkTarget: linkTarget))
                 if kind == .directory && exclusion == nil {
                     let child = openat(directoryFD, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
                     guard child >= 0 else { reasons.insert("directory_unavailable"); continue }
@@ -215,13 +218,14 @@ extension AnalyzerSafeRoot {
               maximumFileBytes > 0, maximumFileBytes <= 1_048_576,
               maximumSeconds > 0, maximumSeconds <= 300 else { throw AccessError.invalidPath }
         let deadline = ProcessInfo.processInfo.systemUptime + maximumSeconds
-        let scope = try preview(userExcludedPaths: userExcludedPaths, maximumEntries: maximumEntries, maximumSeconds: maximumSeconds)
+        let scope = try preview(userExcludedPaths: userExcludedPaths, maximumEntries: maximumEntries, maximumSeconds: maximumSeconds, isCancelled: isCancelled)
         var reasons = scope.partialReasons
         var unread: [String: String] = [:]
         var files: [FileEvidence] = []
         var total = 0
-        var cancelled = false
+        var cancelled = scope.partialReasons.contains("cancelled")
         for entry in scope.entries where entry.kind == .regular && entry.exclusion == nil {
+            if cancelled { break }
             if isCancelled() { cancelled = true; reasons.insert("cancelled"); break }
             if ProcessInfo.processInfo.systemUptime >= deadline { reasons.insert("time_limit"); break }
             if entry.size < 0 { unread[entry.relativePath] = "metadata_unavailable"; reasons.insert("read_incomplete"); continue }
