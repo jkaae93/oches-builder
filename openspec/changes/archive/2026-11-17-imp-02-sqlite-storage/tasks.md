@@ -9,7 +9,7 @@
 
 ## 2. Atomic Transitions, 30-Day Idempotency, Tombstones, and Fault Regression (Sub-PR B)
 
-- [ ] 2.1 Implement `commitTransition` atomically recording operational state, events, and idempotency outcome with RFC 8785 JCS input digest, optimistic `expectedRevision`, 30-day TTL, and workspace-lifetime tombstones.
-- [ ] 2.2 Implement `Degraded` and `RecoveryRequired` transitions on `FULL`/`IOERR`/corruption without silent fallback.
-- [ ] 2.3 Add V-10/V-12 regression tests: real process crash (`_exit`) at every write boundary, `SQLITE_FULL` disk-full rollback, concurrent `expectedRevision` conflicts, concurrent duplicate requests, mismatched input `CONFLICT`, and expired `IDEMPOTENCY_EXPIRED`.
-- [ ] 2.4 Sync `core-storage` spec to `openspec/specs/` and archive `imp-02-sqlite-storage`.
+- [x] 2.1 Implement `commitTransition` atomically recording operational state, events, and idempotency outcome with RFC 8785 JCS input digest, optimistic `expectedRevision`, 30-day TTL, and workspace-lifetime tombstones.
+- [x] 2.2 Implement `Degraded` and `RecoveryRequired` transitions on `FULL`/`IOERR`/corruption without silent fallback.
+- [x] 2.3 Add V-10/V-12 regression tests: real process crash (`_exit`) at every write boundary, `SQLITE_FULL` disk-full rollback, concurrent `expectedRevision` conflicts, concurrent duplicate requests, mismatched input `CONFLICT`, and expired `IDEMPOTENCY_EXPIRED`.
+- [x] 2.4 Sync `core-storage` spec to `openspec/specs/` and archive `imp-02-sqlite-storage`.

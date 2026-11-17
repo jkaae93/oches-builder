@@ -118,6 +118,80 @@ public struct StateSnapshot: Sendable, Equatable {
     }
 }
 
+public enum TransitionCrashStage: String, Sendable, Equatable {
+    case afterStateWrite
+    case afterEventWrite
+    case afterIdempotencyWrite
+}
+
+public struct TransitionRequest: @unchecked Sendable {
+    public static let defaultRetentionSeconds: Int64 = 30 * 24 * 3600
+
+    public let actorID: String
+    public let workspaceID: String
+    public let operation: String
+    public let requestID: String
+    public let objectID: String
+    public let ownerModule: String
+    public let expectedRevision: RevisionRef?
+    public let normalizedInput: RawJSONValue
+    public let nextStateJSON: String
+    public let events: [NewEventRecord]
+    public let responseJSON: String
+    public let nowEpochSeconds: Int64
+    public let retentionSeconds: Int64
+    public let crashStage: TransitionCrashStage?
+    public let onCrashStage: ((TransitionCrashStage) -> Void)?
+
+    public init(
+        actorID: String,
+        workspaceID: String,
+        operation: String,
+        requestID: String,
+        objectID: String,
+        ownerModule: String,
+        expectedRevision: RevisionRef?,
+        normalizedInput: RawJSONValue,
+        nextStateJSON: String,
+        events: [NewEventRecord],
+        responseJSON: String,
+        nowEpochSeconds: Int64,
+        retentionSeconds: Int64 = TransitionRequest.defaultRetentionSeconds,
+        crashStage: TransitionCrashStage? = nil,
+        onCrashStage: ((TransitionCrashStage) -> Void)? = nil
+    ) {
+        self.actorID = actorID
+        self.workspaceID = workspaceID
+        self.operation = operation
+        self.requestID = requestID
+        self.objectID = objectID
+        self.ownerModule = ownerModule
+        self.expectedRevision = expectedRevision
+        self.normalizedInput = normalizedInput
+        self.nextStateJSON = nextStateJSON
+        self.events = events
+        self.responseJSON = responseJSON
+        self.nowEpochSeconds = nowEpochSeconds
+        self.retentionSeconds = retentionSeconds
+        self.crashStage = crashStage
+        self.onCrashStage = onCrashStage
+    }
+}
+
+public struct TransitionResult: Sendable, Equatable {
+    public let revision: RevisionRef
+    public let eventCursor: EventCursor
+    public let responseJSON: String
+    public let idempotentReplay: Bool
+
+    public init(revision: RevisionRef, eventCursor: EventCursor, responseJSON: String, idempotentReplay: Bool) {
+        self.revision = revision
+        self.eventCursor = eventCursor
+        self.responseJSON = responseJSON
+        self.idempotentReplay = idempotentReplay
+    }
+}
+
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 public final class SQLiteStore: @unchecked Sendable {
@@ -337,6 +411,289 @@ public final class SQLiteStore: @unchecked Sendable {
         return try body(db)
     }
 
+    public func commitTransition(_ request: TransitionRequest) throws -> TransitionResult {
+        guard request.workspaceID == workspaceID else { throw StorageError.denied }
+        guard !request.actorID.isEmpty,
+              !request.operation.isEmpty,
+              !request.requestID.isEmpty,
+              !request.objectID.isEmpty,
+              !request.ownerModule.isEmpty,
+              request.retentionSeconds > 0 else {
+            throw StorageError.invalidInput
+        }
+
+        let digestInput: RawJSONValue = .object([
+            ("operation", .string(request.operation)),
+            ("objectId", .string(request.objectID)),
+            ("expectedRevision", request.expectedRevision.map {
+                .object([
+                    ("objectId", .string($0.objectID)),
+                    ("storeGeneration", .string($0.storeGeneration)),
+                    ("revision", .string($0.revision)),
+                ])
+            } ?? .null),
+            ("normalizedInput", request.normalizedInput),
+        ])
+        let inputDigestData: Data
+        do {
+            inputDigestData = try canonicalSHA256(digestInput)
+        } catch {
+            throw StorageError.invalidInput
+        }
+        let inputDigest = inputDigestData.map { String(format: "%02x", $0) }.joined()
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        try ensureAvailableForWrite()
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let currentGen = try queryStoreGeneration()
+
+            if let existing = try queryIdempotencyRecord(
+                actorID: request.actorID,
+                workspaceID: request.workspaceID,
+                operation: request.operation,
+                requestID: request.requestID
+            ) {
+                if existing.tombstoned || request.nowEpochSeconds >= existing.expiresAt {
+                    if !existing.tombstoned {
+                        try tombstoneIdempotencyRecord(
+                            actorID: request.actorID,
+                            workspaceID: request.workspaceID,
+                            operation: request.operation,
+                            requestID: request.requestID
+                        )
+                        try execute("COMMIT")
+                    } else {
+                        _ = try? execute("ROLLBACK")
+                    }
+                    throw StorageError.idempotencyExpired
+                }
+                if existing.inputDigest != inputDigest {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.idempotencyConflict
+                }
+                let replayRev = RevisionRef(
+                    objectID: request.objectID,
+                    storeGeneration: currentGen,
+                    revision: String(existing.resultRevision ?? 0)
+                )
+                let replayCursor = EventCursor(
+                    workspaceID: request.workspaceID,
+                    storeGeneration: currentGen,
+                    sequence: existing.resultCursor ?? 0
+                )
+                _ = try? execute("ROLLBACK")
+                return TransitionResult(
+                    revision: replayRev,
+                    eventCursor: replayCursor,
+                    responseJSON: existing.responseJSON ?? "{}",
+                    idempotentReplay: true
+                )
+            }
+
+            let currentState = try queryStateRow(workspaceID: request.workspaceID, objectID: request.objectID)
+            let newRevision: UInt64
+            if let expected = request.expectedRevision {
+                guard expected.objectID == request.objectID else {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.invalidInput
+                }
+                guard expected.storeGeneration == currentGen else {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.staleGeneration
+                }
+                guard let expectedRevNum = UInt64(expected.revision) else {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.invalidInput
+                }
+                guard let currentState, currentState.revision == expectedRevNum else {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.versionConflict
+                }
+                newRevision = expectedRevNum + 1
+            } else {
+                guard currentState == nil else {
+                    _ = try? execute("ROLLBACK")
+                    throw StorageError.versionConflict
+                }
+                newRevision = 1
+            }
+
+            if currentState != nil {
+                let stmt = try prepare(
+                    """
+                    UPDATE operational_state
+                    SET owner_module = ?, revision = ?, state_json = ?, updated_at = ?
+                    WHERE workspace_id = ? AND object_id = ?
+                    """
+                )
+                defer { sqlite3_finalize(stmt) }
+                try bindText(stmt, index: 1, value: request.ownerModule)
+                sqlite3_bind_int64(stmt, 2, Int64(bitPattern: newRevision))
+                try bindText(stmt, index: 3, value: request.nextStateJSON)
+                sqlite3_bind_int64(stmt, 4, request.nowEpochSeconds)
+                try bindText(stmt, index: 5, value: request.workspaceID)
+                try bindText(stmt, index: 6, value: request.objectID)
+                let rc = sqlite3_step(stmt)
+                guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+            } else {
+                let stmt = try prepare(
+                    """
+                    INSERT INTO operational_state (object_id, workspace_id, owner_module, revision, state_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """
+                )
+                defer { sqlite3_finalize(stmt) }
+                try bindText(stmt, index: 1, value: request.objectID)
+                try bindText(stmt, index: 2, value: request.workspaceID)
+                try bindText(stmt, index: 3, value: request.ownerModule)
+                sqlite3_bind_int64(stmt, 4, Int64(bitPattern: newRevision))
+                try bindText(stmt, index: 5, value: request.nextStateJSON)
+                sqlite3_bind_int64(stmt, 6, request.nowEpochSeconds)
+                let rc = sqlite3_step(stmt)
+                guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+            }
+
+            if request.crashStage == .afterStateWrite {
+                request.onCrashStage?(.afterStateWrite)
+            }
+
+            for event in request.events {
+                let stmt = try prepare(
+                    """
+                    INSERT INTO event_log (event_id, workspace_id, store_generation, object_id, source_id, kind, payload_json, observed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                )
+                defer { sqlite3_finalize(stmt) }
+                try bindText(stmt, index: 1, value: event.eventID)
+                try bindText(stmt, index: 2, value: request.workspaceID)
+                try bindText(stmt, index: 3, value: currentGen)
+                try bindText(stmt, index: 4, value: request.objectID)
+                try bindText(stmt, index: 5, value: event.sourceID)
+                try bindText(stmt, index: 6, value: event.kind)
+                try bindText(stmt, index: 7, value: event.payloadJSON)
+                sqlite3_bind_int64(stmt, 8, event.observedAt)
+                let rc = sqlite3_step(stmt)
+                guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+            }
+
+            if request.crashStage == .afterEventWrite {
+                request.onCrashStage?(.afterEventWrite)
+            }
+
+            let maxSeq = try queryMaxEventSequence(workspaceID: request.workspaceID)
+            let expiresAt = request.nowEpochSeconds.saturatingAdd(request.retentionSeconds)
+            let idempStmt = try prepare(
+                """
+                INSERT INTO idempotency_records (
+                    actor_id, workspace_id, operation, request_id, input_digest,
+                    response_json, result_revision, result_cursor, created_at, expires_at, tombstoned
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """
+            )
+            defer { sqlite3_finalize(idempStmt) }
+            try bindText(idempStmt, index: 1, value: request.actorID)
+            try bindText(idempStmt, index: 2, value: request.workspaceID)
+            try bindText(idempStmt, index: 3, value: request.operation)
+            try bindText(idempStmt, index: 4, value: request.requestID)
+            try bindText(idempStmt, index: 5, value: inputDigest)
+            try bindText(idempStmt, index: 6, value: request.responseJSON)
+            sqlite3_bind_int64(idempStmt, 7, Int64(bitPattern: newRevision))
+            sqlite3_bind_int64(idempStmt, 8, Int64(bitPattern: maxSeq))
+            sqlite3_bind_int64(idempStmt, 9, request.nowEpochSeconds)
+            sqlite3_bind_int64(idempStmt, 10, expiresAt)
+            let idempRC = sqlite3_step(idempStmt)
+            guard idempRC == SQLITE_DONE else { throw mapSQLiteError(idempRC) }
+
+            if request.crashStage == .afterIdempotencyWrite {
+                request.onCrashStage?(.afterIdempotencyWrite)
+            }
+
+            try execute("COMMIT")
+            return TransitionResult(
+                revision: RevisionRef(objectID: request.objectID, storeGeneration: currentGen, revision: String(newRevision)),
+                eventCursor: EventCursor(workspaceID: request.workspaceID, storeGeneration: currentGen, sequence: maxSeq),
+                responseJSON: request.responseJSON,
+                idempotentReplay: false
+            )
+        } catch let error as StorageError {
+            _ = try? execute("ROLLBACK")
+            throw error
+        } catch {
+            _ = try? execute("ROLLBACK")
+            throw StorageError.unavailable("commitTransition failed")
+        }
+    }
+
+    public func sweepExpiredIdempotencyRecords(nowEpochSeconds: Int64) throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        try ensureAvailableForWrite()
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let stmt = try prepare(
+                """
+                UPDATE idempotency_records
+                SET response_json = NULL, tombstoned = 1
+                WHERE workspace_id = ? AND tombstoned = 0 AND expires_at <= ?
+                """
+            )
+            defer { sqlite3_finalize(stmt) }
+            try bindText(stmt, index: 1, value: workspaceID)
+            sqlite3_bind_int64(stmt, 2, nowEpochSeconds)
+            let rc = sqlite3_step(stmt)
+            guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+            let changed = Int(sqlite3_changes(db))
+            try execute("COMMIT")
+            return changed
+        } catch let error as StorageError {
+            _ = try? execute("ROLLBACK")
+            throw error
+        } catch {
+            _ = try? execute("ROLLBACK")
+            throw StorageError.unavailable("sweepExpiredIdempotencyRecords failed")
+        }
+    }
+
+    public func pruneEvents(throughSequence: UInt64) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try ensureAvailableForWrite()
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let delStmt = try prepare("DELETE FROM event_log WHERE workspace_id = ? AND seq <= ?")
+            defer { sqlite3_finalize(delStmt) }
+            try bindText(delStmt, index: 1, value: workspaceID)
+            sqlite3_bind_int64(delStmt, 2, Int64(bitPattern: throughSequence))
+            let rc1 = sqlite3_step(delStmt)
+            guard rc1 == SQLITE_DONE else { throw mapSQLiteError(rc1) }
+
+            let upStmt = try prepare(
+                """
+                UPDATE event_retention_meta
+                SET min_retained_seq = MAX(min_retained_seq, ?)
+                WHERE workspace_id = ?
+                """
+            )
+            defer { sqlite3_finalize(upStmt) }
+            sqlite3_bind_int64(upStmt, 1, Int64(bitPattern: throughSequence.saturatingAdd(1)))
+            try bindText(upStmt, index: 2, value: workspaceID)
+            let rc2 = sqlite3_step(upStmt)
+            guard rc2 == SQLITE_DONE else { throw mapSQLiteError(rc2) }
+
+            try execute("COMMIT")
+        } catch let error as StorageError {
+            _ = try? execute("ROLLBACK")
+            throw error
+        } catch {
+            _ = try? execute("ROLLBACK")
+            throw StorageError.unavailable("pruneEvents failed")
+        }
+    }
+
     // MARK: - Internal helpers
 
     func ensureAvailableForRead() throws {
@@ -537,6 +894,61 @@ public final class SQLiteStore: @unchecked Sendable {
         throw mapSQLiteError(rc)
     }
 
+    private func queryIdempotencyRecord(
+        actorID: String,
+        workspaceID: String,
+        operation: String,
+        requestID: String
+    ) throws -> (inputDigest: String, responseJSON: String?, resultRevision: UInt64?, resultCursor: UInt64?, expiresAt: Int64, tombstoned: Bool)? {
+        let stmt = try prepare(
+            """
+            SELECT input_digest, response_json, result_revision, result_cursor, expires_at, tombstoned
+            FROM idempotency_records
+            WHERE actor_id = ? AND workspace_id = ? AND operation = ? AND request_id = ?
+            """
+        )
+        defer { sqlite3_finalize(stmt) }
+        try bindText(stmt, index: 1, value: actorID)
+        try bindText(stmt, index: 2, value: workspaceID)
+        try bindText(stmt, index: 3, value: operation)
+        try bindText(stmt, index: 4, value: requestID)
+        let rc = sqlite3_step(stmt)
+        if rc == SQLITE_ROW {
+            let digest = columnText(stmt, index: 0)
+            let response = sqlite3_column_type(stmt, 1) == SQLITE_NULL ? nil : columnText(stmt, index: 1)
+            let rev = sqlite3_column_type(stmt, 2) == SQLITE_NULL ? nil : UInt64(bitPattern: sqlite3_column_int64(stmt, 2))
+            let cur = sqlite3_column_type(stmt, 3) == SQLITE_NULL ? nil : UInt64(bitPattern: sqlite3_column_int64(stmt, 3))
+            let expiresAt = sqlite3_column_int64(stmt, 4)
+            let tombstoned = sqlite3_column_int(stmt, 5) != 0
+            return (digest, response, rev, cur, expiresAt, tombstoned)
+        } else if rc == SQLITE_DONE {
+            return nil
+        }
+        throw mapSQLiteError(rc)
+    }
+
+    private func tombstoneIdempotencyRecord(
+        actorID: String,
+        workspaceID: String,
+        operation: String,
+        requestID: String
+    ) throws {
+        let stmt = try prepare(
+            """
+            UPDATE idempotency_records
+            SET response_json = NULL, tombstoned = 1
+            WHERE actor_id = ? AND workspace_id = ? AND operation = ? AND request_id = ?
+            """
+        )
+        defer { sqlite3_finalize(stmt) }
+        try bindText(stmt, index: 1, value: actorID)
+        try bindText(stmt, index: 2, value: workspaceID)
+        try bindText(stmt, index: 3, value: operation)
+        try bindText(stmt, index: 4, value: requestID)
+        let rc = sqlite3_step(stmt)
+        guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
+    }
+
     func execute(_ sql: String) throws {
         guard let db else { throw StorageError.unavailable("database closed") }
         var errMsg: UnsafeMutablePointer<CChar>?
@@ -653,5 +1065,19 @@ public final class SQLiteStore: @unchecked Sendable {
 private extension StorageHealthState {
     static func unavailableReason(_ reason: String) -> StorageHealthState {
         .degraded(reason: reason)
+    }
+}
+
+private extension Int64 {
+    func saturatingAdd(_ other: Int64) -> Int64 {
+        let (val, overflow) = addingReportingOverflow(other)
+        return overflow ? Int64.max : val
+    }
+}
+
+private extension UInt64 {
+    func saturatingAdd(_ other: UInt64) -> UInt64 {
+        let (val, overflow) = addingReportingOverflow(other)
+        return overflow ? UInt64.max : val
     }
 }
