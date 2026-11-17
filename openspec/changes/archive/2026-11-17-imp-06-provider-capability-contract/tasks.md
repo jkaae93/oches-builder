@@ -8,6 +8,6 @@
 
 ## 2. Scoped Capability Snapshot and Concurrent Isolation Gate (Sub-PR B)
 
-- [ ] 2.1 Implement all 12 `CapabilityID`s, 14-axis `CapabilityScope`, `CapabilitySnapshot` (`documented` fail-closed rule), `CapabilityEvaluator` (staleness, remote guard, required intersection), and `evaluateConcurrentAccountIsolation` in `CapabilitySnapshotValidator.swift`.
-- [ ] 2.2 Add V-05 & CV01~CV18 regression tests covering unknown/documented-only blocking, all scope axis staleness checks, remote workspace blocking, and concurrent isolation blocking.
-- [ ] 2.3 Sync `provider-capability` spec to `openspec/specs/` and archive `imp-06-provider-capability-contract`.
+- [x] 2.1 Implement all 12 `CapabilityID`s, 14-axis `CapabilityScope`, `CapabilitySnapshot` (`documented` fail-closed rule), `CapabilityEvaluator` (staleness, remote guard, required intersection), and `evaluateConcurrentAccountIsolation` in `CapabilitySnapshotValidator.swift`.
+- [x] 2.2 Add V-05 & CV01~CV18 regression tests covering unknown/documented-only blocking, all scope axis staleness checks, remote workspace blocking, and concurrent isolation blocking.
+- [x] 2.3 Sync `provider-capability` spec to `openspec/specs/` and archive `imp-06-provider-capability-contract`.
