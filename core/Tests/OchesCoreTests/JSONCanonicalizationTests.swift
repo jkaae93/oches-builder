@@ -35,6 +35,16 @@ final class JSONCanonicalizationTests: XCTestCase {
         XCTAssertEqual(String(decoding: try canonicalizeJSON(value), as: UTF8.self), "{\"e\u{301}\":2,\"é\":1,\"😀\":4,\"\u{e000}\":3}")
     }
 
+    func testOmissionNullAndArrayOrderRemainDistinct() throws {
+        let omitted = try canonicalizeJSON(parse(#"{"payload":{}}"#))
+        let explicitNull = try canonicalizeJSON(parse(#"{"payload":{"value":null}}"#))
+        XCTAssertNotEqual(omitted, explicitNull)
+        let first = try canonicalizeJSON(parse(#"{"items":[1,2]}"#))
+        let reversed = try canonicalizeJSON(parse(#"{"items":[2,1]}"#))
+        XCTAssertNotEqual(first, reversed)
+        XCTAssertNotEqual(try canonicalSHA256(parse(#"{"payload":{}}"#)), try canonicalSHA256(parse(#"{"payload":{"value":null}}"#)))
+    }
+
     func testNegativeZeroAndDigest() throws {
         let value = try parse(#"{"n":-0}"#)
         XCTAssertEqual(String(decoding: try canonicalizeJSON(value), as: UTF8.self), #"{"n":0}"#)
