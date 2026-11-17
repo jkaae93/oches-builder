@@ -3,45 +3,52 @@ import Foundation
 public enum RawJSONValidationError: Error, Equatable {
     case invalidInput
     case duplicateKey
+    case limitExceeded
 }
 
 /// Detects duplicate object keys before Foundation can discard them. This is not
-/// a complete wire validator: numeric, resource-limit and schema checks are
+/// a complete wire validator: numeric and schema checks are
 /// still required before any request can be dispatched.
-public func validateUniqueJSONKeys(_ data: Data) throws {
+public func validateUniqueJSONKeys(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumStringBytes: Int) throws {
+    guard maximumBytes > 0, maximumDepth > 0, maximumStringBytes > 0 else { throw RawJSONValidationError.invalidInput }
+    guard data.count <= maximumBytes else { throw RawJSONValidationError.limitExceeded }
     guard String(data: data, encoding: .utf8) != nil else { throw RawJSONValidationError.invalidInput }
-    // Foundation supplies syntax and Unicode validation; the scanner below
-    // observes original object members, including escaped equivalent names.
+    var scanner = KeyScanner(bytes: Array(data), maximumDepth: maximumDepth, maximumStringBytes: maximumStringBytes)
+    scanner.whitespace()
+    guard scanner.index < scanner.bytes.count, scanner.bytes[scanner.index] == 0x7b else { throw RawJSONValidationError.invalidInput }
+    try scanner.value(depth: 0)
+    scanner.whitespace()
+    guard scanner.index == scanner.bytes.count else { throw RawJSONValidationError.invalidInput }
+    // Parse only after bounded scanning; Foundation validates syntax, not duplicate keys.
     guard let root = try? JSONSerialization.jsonObject(with: data), root is [String: Any] else {
         throw RawJSONValidationError.invalidInput
     }
-    var scanner = KeyScanner(bytes: Array(data))
-    try scanner.value()
-    scanner.whitespace()
-    guard scanner.index == scanner.bytes.count else { throw RawJSONValidationError.invalidInput }
 }
 
 private struct KeyScanner {
     let bytes: [UInt8]
+    let maximumDepth: Int
+    let maximumStringBytes: Int
     var index = 0
 
     mutating func whitespace() {
         while index < bytes.count && [0x20, 0x0a, 0x0d, 0x09].contains(bytes[index]) { index += 1 }
     }
 
-    mutating func value() throws {
+    mutating func value(depth: Int) throws {
         whitespace()
         guard index < bytes.count else { throw RawJSONValidationError.invalidInput }
         switch bytes[index] {
-        case 0x7b: try object()
-        case 0x5b: try array()
+        case 0x7b: try object(depth: depth + 1)
+        case 0x5b: try array(depth: depth + 1)
         case 0x22: _ = try string()
         default:
             while index < bytes.count && ![0x2c, 0x5d, 0x7d, 0x20, 0x0a, 0x0d, 0x09].contains(bytes[index]) { index += 1 }
         }
     }
 
-    mutating func object() throws {
+    mutating func object(depth: Int) throws {
+        guard depth <= maximumDepth else { throw RawJSONValidationError.limitExceeded }
         index += 1
         whitespace()
         if take(0x7d) { return }
@@ -52,19 +59,20 @@ private struct KeyScanner {
             guard keys.insert(Data(key.utf8)).inserted else { throw RawJSONValidationError.duplicateKey }
             whitespace()
             guard take(0x3a) else { throw RawJSONValidationError.invalidInput }
-            try value()
+            try value(depth: depth)
             whitespace()
             if take(0x7d) { return }
             guard take(0x2c) else { throw RawJSONValidationError.invalidInput }
         } while true
     }
 
-    mutating func array() throws {
+    mutating func array(depth: Int) throws {
+        guard depth <= maximumDepth else { throw RawJSONValidationError.limitExceeded }
         index += 1
         whitespace()
         if take(0x5d) { return }
         repeat {
-            try value()
+            try value(depth: depth)
             whitespace()
             if take(0x5d) { return }
             guard take(0x2c) else { throw RawJSONValidationError.invalidInput }
@@ -79,6 +87,7 @@ private struct KeyScanner {
         while index < bytes.count {
             let byte = bytes[index]
             index += 1
+            guard index - start - 1 <= maximumStringBytes || (byte == 0x22 && !escaped && index - start - 2 <= maximumStringBytes) else { throw RawJSONValidationError.limitExceeded }
             if escaped { escaped = false; continue }
             if byte == 0x5c { escaped = true; continue }
             if byte == 0x22 {
