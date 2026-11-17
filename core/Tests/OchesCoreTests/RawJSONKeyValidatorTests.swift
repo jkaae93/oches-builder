@@ -25,10 +25,10 @@ final class RawJSONKeyValidatorTests: XCTestCase {
     }
 
     func testNumericSafeBoundaryAndExponent() throws {
-        for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0"] {
+        for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0", "5e-324", "1e-200", "9007199254740991.1"] {
             try check(Data("{\"n\":\(token)}".utf8))
         }
-        for token in ["9007199254740992", "9007199254740993", "-9007199254740992", "9.007199254740992e15", "1e400", "1e-324", "-1e-324", "9007199254740991.000000000000000000000000000000000001"] {
+        for token in ["9007199254740992", "9007199254740993", "-9007199254740992", "9.007199254740992e15", "1e400", "1e-324", "-1e-324"] {
             XCTAssertThrowsError(try check(Data("{\"n\":\(token)}".utf8))) { error in
                 XCTAssertEqual(error as? RawJSONValidationError, .unsafeNumber)
             }

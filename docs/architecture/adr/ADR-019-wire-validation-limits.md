@@ -19,3 +19,7 @@ Alternatives include an exact decimal lexical classifier followed by correctly r
 ## Consequences and rollback
 
 Until the above decision and review, the current restrictions are fail-closed and must not be advertised as a finalized v1 interoperability contract. No production data migration exists. A later change must document compatibility and rollback; relaxing limits does not by itself establish authorization, transport identity or durability.
+
+## Candidate implementation update
+
+The branch now classifies mathematically integral decimal tokens using their original digits and exponent before binary64 rounding: integers beyond ±9007199254740991 are rejected even with a decimal point or exponent. Finite non-integral values are accepted if conversion does not underflow to zero, including representable subnormals. Non-integral values are rounded to binary64 as required by JCS; operation schemas needing exact decimal semantics must use an explicit string or separately specified representation. This is a proposed interpretation, not an approved contract. Cross-runtime and adversarial boundary review remains required.

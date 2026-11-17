@@ -74,20 +74,7 @@ private struct KeyScanner {
             if token.first == "-" || token.first?.isNumber == true {
                 guard let number = Double(token), number.isFinite else { throw RawJSONValidationError.unsafeNumber }
                 if !wirePolicy { return .number(token) }
-                // Decimal has finite precision; do not let a long mantissa be
-                // rounded down across the safe boundary. This conservative
-                // policy is provisional pending the wire-number decision.
-                let mantissa = token.split(whereSeparator: { $0 == "e" || $0 == "E" }).first ?? ""
-                guard mantissa.utf8.filter({ $0 >= 0x30 && $0 <= 0x39 }).count <= 38 else {
-                    throw RawJSONValidationError.unsafeNumber
-                }
-                // Check the original decimal value too: Double alone rounds large integers.
-                guard let decimal = Decimal(string: token, locale: Locale(identifier: "en_US_POSIX")),
-                      !decimal.isNaN else { throw RawJSONValidationError.unsafeNumber }
-                // Do not silently turn a nonzero wire value into zero before JCS.
-                guard number != 0 || decimal == 0 else { throw RawJSONValidationError.unsafeNumber }
-                let limit = Decimal(9_007_199_254_740_991 as Int64)
-                guard decimal <= limit && decimal >= -limit else { throw RawJSONValidationError.unsafeNumber }
+                guard isSafeWireNumber(token, binary: number) else { throw RawJSONValidationError.unsafeNumber }
                 return .number(token)
             }
             switch token {
@@ -161,4 +148,44 @@ private struct KeyScanner {
         index += 1
         return true
     }
+}
+
+/// Classifies the original decimal token without rounding an integer through
+/// binary64. Valid JSON syntax is still checked by Foundation afterwards.
+private func isSafeWireNumber(_ token: String, binary: Double) -> Bool {
+    let pieces = token.lowercased().split(separator: "e", omittingEmptySubsequences: false)
+    guard pieces.count <= 2 else { return false }
+    let mantissa = pieces[0].trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    let decimalParts = mantissa.split(separator: ".", omittingEmptySubsequences: false)
+    guard decimalParts.count <= 2 else { return false }
+    let fractionCount = decimalParts.count == 2 ? decimalParts[1].count : 0
+    let digits = decimalParts.joined()
+    guard !digits.isEmpty, digits.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return false }
+    let significant = String(digits.drop(while: { $0 == "0" }))
+    if significant.isEmpty { return true }
+    // Values that underflow to zero lose all numeric meaning.
+    guard binary != 0 else { return false }
+    let exponentText = pieces.count == 2 ? String(pieces[1]) : "0"
+    // Extremely large exponents can be classified by sign without overflowing.
+    let exponent: Int
+    if let parsed = Int(exponentText) { exponent = max(-1_000_000, min(1_000_000, parsed)) }
+    else if exponentText.first == "-" { exponent = -1_000_000 }
+    else { exponent = 1_000_000 }
+    let scale = exponent - fractionCount
+    if scale < 0 {
+        let requiredZeros = -scale
+        let trailingZeros = significant.reversed().prefix(while: { $0 == "0" }).count
+        if trailingZeros < requiredZeros { return true } // non-integral decimal
+        let integerDigits = String(significant.dropLast(requiredZeros))
+        return withinSafeInteger(integerDigits)
+    }
+    // Avoid allocating a string proportional to an untrusted exponent.
+    guard significant.count + scale <= 16 else { return false }
+    return withinSafeInteger(significant + String(repeating: "0", count: scale))
+}
+
+private func withinSafeInteger(_ digits: String) -> Bool {
+    let normalized = String(digits.drop(while: { $0 == "0" }))
+    let limit = "9007199254740991"
+    return normalized.count < limit.count || (normalized.count == limit.count && normalized <= limit)
 }
