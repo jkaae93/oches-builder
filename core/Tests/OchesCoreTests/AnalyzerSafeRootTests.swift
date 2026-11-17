@@ -21,18 +21,35 @@ final class AnalyzerSafeRootTests: XCTestCase {
         }
     }
 
+    func testExclusionsApplyBeforeOpeningFile() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("synthetic".utf8).write(to: root.appendingPathComponent(".env"))
+        try Data("synthetic".utf8).write(to: root.appendingPathComponent("private.txt"))
+        let scanner = try AnalyzerSafeRoot(rootPath: root.path)
+        var opened = false
+        XCTAssertThrowsError(try scanner.read(relativePath: ".env", maximumBytes: 100, beforeFinalOpen: { opened = true })) {
+            XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .excluded)
+        }
+        XCTAssertFalse(opened)
+        XCTAssertThrowsError(try scanner.read(relativePath: "private.txt", maximumBytes: 100, userExcludedPaths: ["private.txt"])) {
+            XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .excluded)
+        }
+    }
+
     func testPathReplacementBeforeOpenNeverReadsOutside() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = base.appendingPathComponent("root")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
-        let target = root.appendingPathComponent("target")
+        let target = root.appendingPathComponent("sample.txt")
         let outside = base.appendingPathComponent("outside")
         try Data("inside".utf8).write(to: target)
         try Data("outside-marker".utf8).write(to: outside)
         let scanner = try AnalyzerSafeRoot(rootPath: root.path)
         var replacementError: Error?
-        XCTAssertThrowsError(try scanner.read(relativePath: "target", maximumBytes: 100, beforeFinalOpen: {
+        XCTAssertThrowsError(try scanner.read(relativePath: "sample.txt", maximumBytes: 100, beforeFinalOpen: {
             do {
                 try FileManager.default.removeItem(at: target)
                 try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: outside.path)
@@ -45,11 +62,11 @@ final class AnalyzerSafeRootTests: XCTestCase {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
-        let target = base.appendingPathComponent("target")
+        let target = base.appendingPathComponent("sample.txt")
         try Data("inside".utf8).write(to: target)
         let scanner = try AnalyzerSafeRoot(rootPath: base.path)
         var mutationError: Error?
-        XCTAssertThrowsError(try scanner.read(relativePath: "target", maximumBytes: 100, beforeFinalStat: {
+        XCTAssertThrowsError(try scanner.read(relativePath: "sample.txt", maximumBytes: 100, beforeFinalStat: {
             do { try Data("modified-content".utf8).write(to: target) } catch { mutationError = error }
         })) {
             XCTAssertEqual($0 as? AnalyzerSafeRoot.AccessError, .changedDuringRead)

@@ -10,6 +10,7 @@ final class AnalyzerSafeRoot {
         case notRegularFile
         case limitExceeded
         case changedDuringRead
+        case excluded
     }
 
     private let rootFD: Int32
@@ -24,9 +25,10 @@ final class AnalyzerSafeRoot {
 
     /// Reads a regular file without following links, including in parent components.
     /// The caller owns the returned bytes and must not log or transmit them.
-    func read(relativePath: String, maximumBytes: Int, beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> Data {
+    func read(relativePath: String, maximumBytes: Int, userExcludedPaths: Set<String> = [], beforeFinalOpen: (() -> Void)? = nil, beforeFinalStat: (() -> Void)? = nil) throws -> Data {
         guard maximumBytes > 0, maximumBytes <= 1_048_576,
               !relativePath.hasPrefix("/"), !relativePath.utf8.contains(0) else { throw AccessError.invalidPath }
+        guard try AnalyzerExclusions.classify(relativePath: relativePath, userExcludedPaths: userExcludedPaths) == nil else { throw AccessError.excluded }
         let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { throw AccessError.invalidPath }
         var current = dup(rootFD)
