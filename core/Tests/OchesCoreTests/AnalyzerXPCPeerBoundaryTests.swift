@@ -42,6 +42,21 @@ final class AnalyzerXPCPeerBoundaryTests: XCTestCase {
         XCTAssertNoThrow(try AnalyzerXPCPeerBoundary(teamID: "TEAM123", signingIdentifier: "com.example.app", expectedUID: getuid()))
     }
 
+    func testClientRejectsReplyFromCoreWithMismatchedSignature() throws {
+        let delegate = ControlDelegate()
+        let listener = NSXPCListener.anonymous()
+        listener.delegate = delegate
+        listener.resume()
+        defer { listener.invalidate() }
+        XCTAssertThrowsError(try AnalyzerXPCProbeClient(endpoint: listener.endpoint, teamID: "TEAM\" or true", signingIdentifier: "com.example.core"))
+        let client = try AnalyzerXPCProbeClient(endpoint: listener.endpoint, teamID: "NONEXISTENTTEAM", signingIdentifier: "com.example.must.not.match")
+        defer { client.invalidate() }
+        let rejected = expectation(description: "untrusted core reply rejected")
+        client.readiness(onError: { _ in rejected.fulfill() }, reply: { _ in XCTFail("untrusted Core replied") })
+        wait(for: [rejected], timeout: 5)
+        withExtendedLifetime(delegate) {}
+    }
+
     func testActualXPCRejectsPeerWithoutRequiredSignature() throws {
         let delegate = try AnalyzerXPCPeerBoundary(teamID: "NONEXISTENTTEAM", signingIdentifier: "com.example.must.not.match", expectedUID: getuid())
         let listener = NSXPCListener.anonymous()
