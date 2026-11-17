@@ -25,6 +25,18 @@ final class AnalyzerSafeRoot {
 
     deinit { close(rootFD) }
 
+    struct RootIdentity: Equatable {
+        let device: dev_t
+        let inode: ino_t
+    }
+
+    /// Identity of the directory already held open, not a caller-supplied path.
+    func rootIdentity() throws -> RootIdentity {
+        var info = stat()
+        guard fstat(rootFD, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { throw AccessError.unavailable }
+        return RootIdentity(device: info.st_dev, inode: info.st_ino)
+    }
+
     struct ReadEvidence {
         let bytes: Data
         let size: Int64
