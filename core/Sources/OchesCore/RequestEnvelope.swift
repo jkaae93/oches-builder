@@ -6,6 +6,9 @@ public enum RequestEnvelopeError: Error, Equatable {
 }
 
 struct ValidatedRequestEnvelope {
+    // Preserve the validated original tree; reconstructed subsets must not be
+    // used for request digests or approval binding.
+    let original: RawJSONValue
     let clientID: String
     let workspaceID: String
     let requestID: String
@@ -68,5 +71,5 @@ func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtoc
         guard case .array(let refs) = approvals, !refs.isEmpty, refs.allSatisfy({ nonempty($0) }) else { throw RequestEnvelopeError.invalidInput }
         approvalRefs = refs.compactMap { if case .string(let value) = $0 { return value }; return nil }
     }
-    return ValidatedRequestEnvelope(clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, payload: payload, approvalRefs: approvalRefs, expectedRevision: expectedRevision)
+    return ValidatedRequestEnvelope(original: value, clientID: clientID, workspaceID: workspaceID, requestID: requestID, operation: operation, payload: payload, approvalRefs: approvalRefs, expectedRevision: expectedRevision)
 }

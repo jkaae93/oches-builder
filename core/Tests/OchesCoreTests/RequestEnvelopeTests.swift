@@ -55,6 +55,8 @@ final class RequestEnvelopeTests: XCTestCase {
         let envelope = try validateRequestEnvelope(value, negotiated: version)
         XCTAssertEqual(envelope.approvalRefs, ["a", "b"])
         XCTAssertEqual(String(decoding: try canonicalizeJSON(envelope.payload), as: UTF8.self), #"{"x":null}"#)
+        XCTAssertEqual(try canonicalizeJSON(envelope.original), try canonicalizeJSON(value))
+        XCTAssertEqual(try canonicalSHA256(envelope.original), try canonicalSHA256(value))
     }
 
     func testRevisionRequiresCanonicalDecimalString() throws {
