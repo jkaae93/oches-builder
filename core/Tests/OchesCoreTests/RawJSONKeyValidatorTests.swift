@@ -7,6 +7,15 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         try validateUniqueJSONKeys(data, maximumBytes: 1024, maximumDepth: 3, maximumStringBytes: 64)
     }
 
+    func testUnicodeSurrogatesAndStringLimits() throws {
+        try check(Data(#"{"x":"\uD83D\uDE00"}"#.utf8))
+        for text in [#"{"x":"\uD800"}"#, #"{"x":"\uDC00"}"#] {
+            XCTAssertThrowsError(try check(Data(text.utf8)))
+        }
+        try validateUniqueJSONKeys(Data(#"{"abc":"xyz"}"#.utf8), maximumBytes: 100, maximumDepth: 2, maximumStringBytes: 3)
+        XCTAssertThrowsError(try validateUniqueJSONKeys(Data(#"{"abc":"xyzz"}"#.utf8), maximumBytes: 100, maximumDepth: 2, maximumStringBytes: 3))
+    }
+
     func testNumericSafeBoundaryAndExponent() throws {
         for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0"] {
             try check(Data("{\"n\":\(token)}".utf8))
