@@ -85,6 +85,17 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testRejectsMalformedJSONGrammar() {
+        let malformed = [
+            #"{"x":TRUE}"#, #"{"x":nul}"#, #"{"x":falsex}"#,
+            #"{"x":1 "y":2}"#, #"{"x":1,,"y":2}"#,
+            #"{"x":[,1]}"#, #"{"x":[1 2]}"#, #"{"x":{"a":1,}}"#,
+            #"{"x":"\q"}"#, #"{"x":"\u12zz"}"#, #"{"x":"unterminated}"#,
+            #"{"x":1} trailing"#, #"{"x":0x1}"#, #"{"x":NaN}"#
+        ]
+        for input in malformed { XCTAssertThrowsError(try check(Data(input.utf8)), input) }
+    }
+
     func testRejectsMalformedAndNonObjectInput() {
         for data in [Data(#"{"a":}"#.utf8), Data(#"{"a":1,}"#.utf8), Data(#"{"a":[1,]}"#.utf8), Data(#"{"a":true false}"#.utf8), Data("[]".utf8), Data([0xff])] {
             XCTAssertThrowsError(try check(data))
