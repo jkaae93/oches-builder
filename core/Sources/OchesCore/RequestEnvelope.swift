@@ -9,6 +9,7 @@ public enum RequestEnvelopeError: Error, Equatable {
 /// operation payloads, or make a request eligible for dispatch.
 public func validateRequestEnvelope(_ value: RawJSONValue, negotiated: NegotiatedProtocol) throws {
     guard case .object(let members) = value else { throw RequestEnvelopeError.invalidInput }
+    guard Set(members.map { Data($0.0.utf8) }).count == members.count else { throw RequestEnvelopeError.invalidInput }
     func field(_ name: String) -> RawJSONValue? {
         members.first { $0.0.utf8.elementsEqual(name.utf8) }?.1
     }
@@ -17,9 +18,14 @@ public func validateRequestEnvelope(_ value: RawJSONValue, negotiated: Negotiate
         throw RequestEnvelopeError.invalidInput
     }
     func integer(_ value: RawJSONValue?) -> UInt32? {
-        guard case .number(let text) = value, let number = Double(text), number.isFinite,
-              number >= 0, number <= Double(UInt32.max), number.rounded(.towardZero) == number else { return nil }
-        return UInt32(number)
+        guard case .number(let text) = value,
+              let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), !decimal.isNaN,
+              decimal >= 0, decimal <= Decimal(UInt32.max) else { return nil }
+        var original = decimal
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &original, 0, .down)
+        guard rounded == decimal else { return nil }
+        return UInt32(NSDecimalNumber(decimal: rounded).uint64Value)
     }
     func nonempty(_ value: RawJSONValue?) -> Bool {
         guard case .string(let text) = value else { return false }
@@ -30,7 +36,7 @@ public func validateRequestEnvelope(_ value: RawJSONValue, negotiated: Negotiate
           nonempty(field("operation")), case .object = field("payload") else { throw RequestEnvelopeError.invalidInput }
     guard major == 1, major == negotiated.major, minor == negotiated.minor else { throw RequestEnvelopeError.versionUnsupported }
     if let revision = field("expectedRevision") {
-        guard case .object(let parts) = revision, parts.count == 3 else { throw RequestEnvelopeError.invalidInput }
+        guard case .object(let parts) = revision, parts.count == 3, Set(parts.map { Data($0.0.utf8) }).count == 3 else { throw RequestEnvelopeError.invalidInput }
         func part(_ name: String) -> RawJSONValue? { parts.first { $0.0.utf8.elementsEqual(name.utf8) }?.1 }
         guard nonempty(part("objectId")), nonempty(part("storeGeneration")),
               case .string(let number) = part("revision"),
