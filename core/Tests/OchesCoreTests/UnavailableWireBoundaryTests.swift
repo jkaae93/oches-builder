@@ -33,6 +33,15 @@ final class UnavailableWireBoundaryTests: XCTestCase {
         XCTAssertEqual(UnavailableWireResult.unavailable.safeError, SafeWireError(code: .unavailable, detail: nil))
     }
 
+    func testMalformedInputDoesNotAppearInSafeError() {
+        let boundary = UnavailableWireBoundary()
+        let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
+        let input = Data(#"{"synthetic-sensitive-marker":"not-a-secret","bad":}"#.utf8)
+        let error = boundary.inspect(input, negotiated: version, maximumBytes: 4096, maximumDepth: 8, maximumStringBytes: 1024).safeError
+        XCTAssertEqual(error.code, .invalidInput)
+        XCTAssertNil(error.detail)
+    }
+
     func testRejectsDuplicateAndUnsupportedVersion() {
         let boundary = UnavailableWireBoundary()
         let version = NegotiatedProtocol(major: 1, minor: 0, capabilities: [])
