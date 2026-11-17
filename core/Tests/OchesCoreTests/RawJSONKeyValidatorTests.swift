@@ -24,6 +24,19 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
+    func testIndependentDecimalPolicyCases() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "numeric-cases", withExtension: "json", subdirectory: "Fixtures/envelopes"))
+        let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertEqual(cases.count, 300)
+        for item in cases {
+            let token = try XCTUnwrap(item["token"] as? String)
+            let expected = try XCTUnwrap(item["accepted"] as? Bool)
+            let input = Data("{\"n\":\(token)}".utf8)
+            if expected { XCTAssertNoThrow(try check(input), token) }
+            else { XCTAssertThrowsError(try check(input), token) }
+        }
+    }
+
     func testNumericSafeBoundaryAndExponent() throws {
         for token in ["9007199254740991", "-9007199254740991", "1.25", "1e3", "-0", "5e-324", "1e-200", "9007199254740991.1"] {
             try check(Data("{\"n\":\(token)}".utf8))
