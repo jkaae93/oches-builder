@@ -48,8 +48,11 @@ final class RawJSONKeyValidatorTests: XCTestCase {
         }
     }
 
-    func testLongExponentFailsClosedAtFoundationSyntaxCheck() {
-        XCTAssertThrowsError(try check(Data(#"{"n":1e0000000000000000000000000000000000000000}"#.utf8)))
+    func testLongZeroExponentAndMalformedNumbers() throws {
+        try check(Data(#"{"n":1e0000000000000000000000000000000000000000}"#.utf8))
+        for token in ["01", "-01", "1.", ".1", "1e", "1e+", "--1", "1e2x", "+1"] {
+            XCTAssertThrowsError(try check(Data("{\"n\":\(token)}".utf8)), token)
+        }
     }
 
     func testRejectsUnboundedCallerLimits() {
@@ -83,7 +86,7 @@ final class RawJSONKeyValidatorTests: XCTestCase {
     }
 
     func testRejectsMalformedAndNonObjectInput() {
-        for data in [Data(#"{"a":}"#.utf8), Data("[]".utf8), Data([0xff])] {
+        for data in [Data(#"{"a":}"#.utf8), Data(#"{"a":1,}"#.utf8), Data(#"{"a":[1,]}"#.utf8), Data(#"{"a":true false}"#.utf8), Data("[]".utf8), Data([0xff])] {
             XCTAssertThrowsError(try check(data))
         }
     }

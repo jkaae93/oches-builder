@@ -41,10 +41,6 @@ func parseJSON(_ data: Data, maximumBytes: Int, maximumDepth: Int, maximumString
     let value = try scanner.value(depth: 0)
     scanner.whitespace()
     guard scanner.index == scanner.bytes.count else { throw RawJSONValidationError.invalidInput }
-    // Parse only after bounded scanning; Foundation validates syntax, not duplicate keys.
-    guard (try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)) != nil else {
-        throw RawJSONValidationError.invalidInput
-    }
     return value
 }
 
@@ -72,6 +68,8 @@ private struct KeyScanner {
             guard start < index else { throw RawJSONValidationError.invalidInput }
             let token = String(decoding: bytes[start..<index], as: UTF8.self)
             if token.first == "-" || token.first?.isNumber == true {
+                let pattern = #"\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\z"#
+                guard token.range(of: pattern, options: .regularExpression) != nil else { throw RawJSONValidationError.invalidInput }
                 guard let number = Double(token), number.isFinite else { throw RawJSONValidationError.unsafeNumber }
                 if !wirePolicy { return .number(token) }
                 guard isSafeWireNumber(token, binary: number) else { throw RawJSONValidationError.unsafeNumber }
