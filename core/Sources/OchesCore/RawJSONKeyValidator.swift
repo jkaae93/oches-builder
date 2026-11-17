@@ -8,7 +8,7 @@ public enum RawJSONValidationError: Error, Equatable {
 }
 
 /// JSON objects retain ordered members instead of using Swift String-keyed maps.
-indirect enum RawJSONValue {
+public indirect enum RawJSONValue {
     case object([(String, RawJSONValue)])
     case array([RawJSONValue])
     case string(String)
