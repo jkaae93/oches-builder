@@ -1,0 +1,3 @@
+# Proposal
+
+Implement IMP-21 packaging, update safety, compatibility negotiation, and rollback guarantees (ARC-14, COMPATIBILITY_EVIDENCE_V1, P1/P2/P9/P10): bundled local Desktop+Core installation enforcement (P9), protocol and schema compatibility gates (W8 & downgrade recovery block), artifact SHA-256 + Developer ID/notarization metadata gates, atomic pre-upgrade SQLite backup with rollback on injected update failure, POSIX-hardened Native Messaging Host registration verification and binary-swap re-verification triggers, and uninstall planning separating revocation/app removal from opt-in workspace data purge while preserving Provider official credentials.
