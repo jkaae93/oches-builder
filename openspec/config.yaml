@@ -1,0 +1,42 @@
+schema: spec-driven
+
+context: |
+  Language: English
+  All artifacts must be written in English.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Project: oches-builder, a contract-driven builder project. Consult relevant files in docs/architecture/ and docs/architecture/adr/ before changing established contracts.
+  Keep accepted specifications concise, testable, and organized by capability. Describe observable behavior and scenarios rather than implementation details unless the implementation choice is itself a requirement.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+rules:
+  proposal:
+    - State the motivation, scope, and explicit non-goals.
+    - Identify affected contracts, capabilities, and relevant ADRs.
+  specs:
+    - Use normative requirements and concrete GIVEN/WHEN/THEN scenarios.
+    - Keep each requirement verifiable and avoid duplicating unrelated architecture evidence.
+  design:
+    - Record meaningful tradeoffs and link related ADRs; do not create an ADR for routine implementation detail.
+  tasks:
+    - Include implementation, documentation/spec synchronization, and verification tasks where applicable.
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
