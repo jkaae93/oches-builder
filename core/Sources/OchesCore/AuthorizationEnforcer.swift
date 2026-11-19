@@ -20,6 +20,7 @@ public struct AuthorizedExecutionInput: @unchecked Sendable {
     public let transferApprovalID: String?
     public let requiresExternalTransfer: Bool
     public let applyApprovalID: String?
+    public let expectedApplyBinding: ApprovalBinding?
     public let normalizedInput: RawJSONValue
     public let nextStateJSON: String
     public let responseJSON: String
@@ -45,6 +46,7 @@ public struct AuthorizedExecutionInput: @unchecked Sendable {
         transferApprovalID: String? = nil,
         requiresExternalTransfer: Bool = false,
         applyApprovalID: String? = nil,
+        expectedApplyBinding: ApprovalBinding? = nil,
         normalizedInput: RawJSONValue,
         nextStateJSON: String,
         responseJSON: String,
@@ -69,6 +71,7 @@ public struct AuthorizedExecutionInput: @unchecked Sendable {
         self.transferApprovalID = transferApprovalID
         self.requiresExternalTransfer = requiresExternalTransfer
         self.applyApprovalID = applyApprovalID
+        self.expectedApplyBinding = expectedApplyBinding
         self.normalizedInput = normalizedInput
         self.nextStateJSON = nextStateJSON
         self.responseJSON = responseJSON
@@ -282,6 +285,7 @@ public final class AuthorizationEnforcer: @unchecked Sendable {
                 ])
             } ?? .null),
             ("normalizedInput", input.normalizedInput),
+            ("applyBinding", try input.expectedApplyBinding.map { .string(try $0.canonicalApplyIdentity().base64EncodedString()) } ?? .null),
         ]))
         let idempotencyDigest = inputDigestData.map { String(format: "%02x", $0) }.joined()
 
@@ -681,6 +685,14 @@ public final class AuthorizationEnforcer: @unchecked Sendable {
         guard let binding = try? JSONDecoder().decode(ApprovalBinding.self, from: Data(bindingJSON.utf8)),
               binding.isValid(for: expectedKind) else {
             throw AuthorizationError.invalidInput("invalid approval binding")
+        }
+
+        if expectedKind == .configExportApply {
+            guard let expected = input.expectedApplyBinding,
+                  try expected.canonicalApplyIdentity() == binding.canonicalApplyIdentity(),
+                  expected.planDigest?.utf8.elementsEqual(input.requestDigest.utf8) == true,
+                  expected.targetFileVersions?.keys.contains(where: { $0.utf8.elementsEqual(canonicalTarget.utf8) }) == true
+            else { throw AuthorizationError.conflict("apply plan binding mismatch") }
         }
 
         if expectedKind == .execution {

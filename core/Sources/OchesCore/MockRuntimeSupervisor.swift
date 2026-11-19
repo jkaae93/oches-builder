@@ -146,6 +146,32 @@ public final class MockRuntimeAdapter: @unchecked Sendable {
         processesByPID[expected.pid] = live
         return .normalExitConfirmed
     }
+
+    public func fail(expected: ProcessIdentity) -> RuntimeObservationEvent {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var live = processesByPID[expected.pid], live.identity == expected else {
+            return .outcomeUnknown
+        }
+        live.alive = false
+        live.terminatedByCancel = false
+        live.exitCode = 1
+        processesByPID[expected.pid] = live
+        return .failureConfirmed
+    }
+
+    public func interrupt(expected: ProcessIdentity) -> RuntimeObservationEvent {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var live = processesByPID[expected.pid], live.identity == expected else {
+            return .outcomeUnknown
+        }
+        live.alive = false
+        live.terminatedByCancel = false
+        live.exitCode = -2
+        processesByPID[expected.pid] = live
+        return .interruptionConfirmed
+    }
 }
 
 public final class RuntimeSessionManager: @unchecked Sendable {
@@ -302,6 +328,26 @@ public final class RuntimeSessionManager: @unchecked Sendable {
             throw RuntimeLifecycleError.invalidState("no confirmed process identity")
         }
         let ev = adapter.completeNormally(expected: ProcessIdentity(pid: pid, processStartToken: token, attemptID: attemptID))
+        try applyObservedTransition(attemptID: attemptID, event: ev, pid: pid, token: token, nowEpochSeconds: nowEpochSeconds)
+        return try gate.fetchAttempt(attemptID: attemptID)
+    }
+
+    public func failProcess(attemptID: String, nowEpochSeconds: Int64) throws -> ExecutionAttemptRecord {
+        let current = try gate.fetchAttempt(attemptID: attemptID)
+        guard let pid = current.pid, let token = current.processStartToken else {
+            throw RuntimeLifecycleError.invalidState("no confirmed process identity")
+        }
+        let ev = adapter.fail(expected: ProcessIdentity(pid: pid, processStartToken: token, attemptID: attemptID))
+        try applyObservedTransition(attemptID: attemptID, event: ev, pid: pid, token: token, nowEpochSeconds: nowEpochSeconds)
+        return try gate.fetchAttempt(attemptID: attemptID)
+    }
+
+    public func interruptProcess(attemptID: String, nowEpochSeconds: Int64) throws -> ExecutionAttemptRecord {
+        let current = try gate.fetchAttempt(attemptID: attemptID)
+        guard let pid = current.pid, let token = current.processStartToken else {
+            throw RuntimeLifecycleError.invalidState("no confirmed process identity")
+        }
+        let ev = adapter.interrupt(expected: ProcessIdentity(pid: pid, processStartToken: token, attemptID: attemptID))
         try applyObservedTransition(attemptID: attemptID, event: ev, pid: pid, token: token, nowEpochSeconds: nowEpochSeconds)
         return try gate.fetchAttempt(attemptID: attemptID)
     }

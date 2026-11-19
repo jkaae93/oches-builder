@@ -415,6 +415,18 @@ public final class SQLiteStore: @unchecked Sendable {
         try commitTransition(request, preserveProfileRevision: false)
     }
 
+    func commitSchedulerReservation(_ request: TransitionRequest) throws -> TransitionResult {
+        guard request.ownerModule == "ARC-07", request.operation == "run.reserve",
+              request.objectID.hasPrefix("arc07/run/") else { throw StorageError.invalidInput }
+        return try commitTransition(request, preserveProfileRevision: false, validateSchedulerReservation: true)
+    }
+
+    func commitSchedulerEvaluation(_ request: TransitionRequest, check: SchedulerEvaluationCheck) throws -> TransitionResult {
+        guard request.ownerModule == "ARC-07", request.operation == "run.applyEvaluation",
+              request.objectID.hasPrefix("arc07/run/") else { throw StorageError.invalidInput }
+        return try commitTransition(request, preserveProfileRevision: false, evaluationCheck: check)
+    }
+
     /// Internal only: authorization and validated Profile serialization must be
     /// performed by the future product entry point before this is reachable.
     func commitProfileTransition(_ request: TransitionRequest) throws -> TransitionResult {
@@ -469,7 +481,12 @@ public final class SQLiteStore: @unchecked Sendable {
         guard rc == SQLITE_DONE else { throw mapSQLiteError(rc) }
     }
 
-    private func commitTransition(_ request: TransitionRequest, preserveProfileRevision: Bool) throws -> TransitionResult {
+    private func commitTransition(
+        _ request: TransitionRequest,
+        preserveProfileRevision: Bool,
+        validateSchedulerReservation: Bool = false,
+        evaluationCheck: SchedulerEvaluationCheck? = nil
+    ) throws -> TransitionResult {
         guard request.workspaceID == workspaceID else { throw StorageError.denied }
         guard !request.actorID.isEmpty,
               !request.operation.isEmpty,
@@ -554,6 +571,8 @@ public final class SQLiteStore: @unchecked Sendable {
                 )
             }
 
+            if validateSchedulerReservation { try SchedulerRunRepository.validateWorkspaceReservation(request, store: self) }
+            if let evaluationCheck { try EvaluationVerdictStore.validateInTx(request, check: evaluationCheck, store: self) }
             let currentState = try queryStateRow(workspaceID: request.workspaceID, objectID: request.objectID)
             let newRevision: UInt64
             if let expected = request.expectedRevision {

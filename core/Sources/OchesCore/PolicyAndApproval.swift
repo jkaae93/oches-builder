@@ -149,6 +149,23 @@ public struct ApprovalBinding: Sendable, Equatable, Codable {
     }
 }
 
+extension ApprovalBinding {
+    func canonicalApplyIdentity() throws -> Data {
+        guard isValid(for: .configExportApply), let planID, let planDigest,
+              let targetFileVersions, let agentDefinitionRevision, let adapterVersion
+        else { throw AuthorizationError.invalidInput("invalid apply binding") }
+        return try canonicalizeJSON(.object([
+            ("domain", .string("oches.approval.apply-binding.v1")),
+            ("planID", .string(planID)), ("planDigest", .string(planDigest)),
+            ("targets", .object(targetFileVersions.map { ($0.key, .string($0.value)) })),
+            ("definitionObject", .string(agentDefinitionRevision.objectID)),
+            ("generation", .string(agentDefinitionRevision.storeGeneration)),
+            ("revision", .string(agentDefinitionRevision.revision)),
+            ("adapterVersion", .string(adapterVersion))
+        ]))
+    }
+}
+
 public struct ApprovalRecord: Sendable, Equatable, Codable {
     public let approvalID: String
     public let kind: ApprovalKind

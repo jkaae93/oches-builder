@@ -168,6 +168,9 @@ public final class RuntimePrepareAndStartGate: @unchecked Sendable {
                 guard attempt.state == .prepared else {
                     throw RuntimeLifecycleError.illegalTransition(from: attempt.state, event: .startRecorded)
                 }
+                guard input.snapshot.snapshotID == attempt.snapshotID else {
+                    throw RuntimeLifecycleError.permissionDenied("capability snapshot mismatch with prepared attempt")
+                }
 
                 // Validate & consume execution approval bound to this preparedAttemptID
                 try consumeApprovalInTx(
@@ -343,8 +346,15 @@ public final class RuntimePrepareAndStartGate: @unchecked Sendable {
             guard binding.preparedAttemptID == attempt.attemptID,
                   binding.runID == attempt.runID,
                   binding.taskRevision == attempt.taskRevision,
+                  binding.instanceRevision == attempt.instanceRevision,
+                  binding.bindingDigest == attempt.bindingDigest,
+                  binding.capabilitySnapshotID == attempt.snapshotID,
                   binding.executionRequestDigest == attempt.executionRequestDigest else {
                 throw RuntimeLifecycleError.permissionDenied("execution approval mismatch with prepared attempt")
+            }
+        } else if expectedKind == .externalTransfer {
+            guard binding.accountRef == attempt.accountRef else {
+                throw RuntimeLifecycleError.permissionDenied("external transfer approval account mismatch")
             }
         }
 

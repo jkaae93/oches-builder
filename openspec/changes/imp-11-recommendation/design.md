@@ -1,0 +1,11 @@
+# Design
+
+Follow ARC-03 and DESIGN_FINALIZATION E1/E2: six candidate patterns, no executable rule DSL, explicit constraint records and versioned evidence. Evaluate typed facts deterministically. Missing facts and unsupported predicates remain unknown; violations reject candidates and never disappear in aggregate scoring. Later integrate Profile/Registry candidates, verified capabilities, explanations, stale detection and fixed fixture evaluation. IMP-09/10 completion gates remain outstanding.
+
+Generate bounded pattern descriptors in fixed order with Single Agent first. Static claims explain topology and cite the rule version; they do not imply project suitability or performance. Keep routing/optimization-loop semantics blocked under the frozen v1 unsupported policy, and retain non-executable markers on all skeletons until real definitions, capability, policy and approval checks are integrated. Never infer writes, resume support or external access from a topology alone.
+
+Pin full Profile content plus generation/revision, complete capability scope/entries/time, Registry references, typed constraints and generator rule version. Sort capability entries before hashing to avoid nondeterministic Codable dictionary ordering. Scope policy versions and private account references participate only in hashed input identity. Reject changed pins, backward time and age at or beyond 24 hours; pin capture is not authenticated record lookup or execution authorization.
+
+The internal service loads the exact persisted Profile, pins required capability IDs, uses CapabilityEvaluator against requested scope and preserves per-candidate constraint/capability/Profile failure reasons. Documented-only support remains Unknown. Registry references are only pins until lookup is integrated; policy/approval remain separate. Never interpret technical requirement pass as permission to execute.
+
+Store proposal snapshots create-only with candidate explanations/topology and input/evidence identity. Store selection separately, tied to exact proposal revision and input digest. Reject stale/expired inputs and non-passing technical choices; retain replay-safe request results. Selection explicitly carries no execution authority. This internal repository must be called only after authenticated user intent and current input revalidation are integrated.

@@ -1,0 +1,848 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:oches:template-exchange:1.0",
+  "title": "Template exchange v1.0 structural contract",
+  "description": "Local-only structural schema. Raw byte/number limits, graph semantics, reference authorization, publication approval and execution gates are separate mandatory checks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "metadata",
+    "nodes",
+    "edges",
+    "requirements"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "major",
+        "minor"
+      ],
+      "properties": {
+        "major": {
+          "const": 1
+        },
+        "minor": {
+          "const": 0
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "tags",
+        "useCases"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": "\\S"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "pattern": "\\S"
+          },
+          "maxItems": 256
+        },
+        "useCases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "pattern": "\\S"
+          },
+          "maxItems": 256
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "definition"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "agent"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "definition": {
+                "$ref": "#/$defs/agent"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "inputs",
+              "outputs",
+              "goal",
+              "resourceLimits"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "task"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "resourceLimits": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "maxDurationSeconds",
+                  "maxRetries"
+                ],
+                "properties": {
+                  "maxDurationSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400
+                  },
+                  "maxRetries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "inputs",
+              "outputs",
+              "capability",
+              "permissions"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "tool"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "capability": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/permission"
+                },
+                "maxItems": 256
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "inputs",
+              "outputs",
+              "memoryRef",
+              "evidenceRefs"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "memory"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "memoryRef": {
+                "$ref": "#/$defs/domainRef"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/domainRef"
+                },
+                "maxItems": 256,
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "inputs",
+              "outputs",
+              "criteriaRef",
+              "evaluatorRef"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "evaluation"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "criteriaRef": {
+                "$ref": "#/$defs/domainRef"
+              },
+              "evaluatorRef": {
+                "$ref": "#/$defs/domainRef"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "requirements",
+              "inputs",
+              "outputs",
+              "action",
+              "scope",
+              "targetRef",
+              "expiresAfterSeconds"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "approval"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "requirements": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/capability"
+                },
+                "maxItems": 256
+              },
+              "externalInputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "maxItems": 128
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "outputs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/port"
+                },
+                "maxItems": 128
+              },
+              "action": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536,
+                "pattern": "\\S"
+              },
+              "targetRef": {
+                "$ref": "#/$defs/domainRef"
+              },
+              "expiresAfterSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 900
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 1024,
+      "minItems": 1
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "fromNode",
+              "toNode",
+              "fromPort",
+              "toPort"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "dependency",
+                  "data"
+                ]
+              },
+              "fromNode": {
+                "$ref": "#/$defs/id"
+              },
+              "toNode": {
+                "$ref": "#/$defs/id"
+              },
+              "fromPort": {
+                "$ref": "#/$defs/id"
+              },
+              "toPort": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "fromNode",
+              "toNode"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "roleBinding",
+                  "toolRef",
+                  "memoryRef",
+                  "evaluationRef",
+                  "approvalRef"
+                ]
+              },
+              "fromNode": {
+                "$ref": "#/$defs/id"
+              },
+              "toNode": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 4096
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "permissions"
+      ],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capability"
+          },
+          "maxItems": 256
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/permission"
+          },
+          "maxItems": 256
+        }
+      }
+    },
+    "externalInputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "node",
+          "port"
+        ],
+        "properties": {
+          "node": {
+            "$ref": "#/$defs/id"
+          },
+          "port": {
+            "$ref": "#/$defs/id"
+          }
+        }
+      },
+      "maxItems": 131072
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "not": {"pattern": "[\\r\\n]"}
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "portId",
+        "type",
+        "required"
+      ],
+      "properties": {
+        "portId": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "json",
+            "artifactRef",
+            "control"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "required"
+      ],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": "\\S"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "scope",
+        "approvalRequired"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": "\\S"
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": "\\S"
+        },
+        "approvalRequired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "domainRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,19}$",
+          "not": {"pattern": "[\\r\\n]"}
+        }
+      }
+    },
+    "agent": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "AgentDefinition v1 structural contract",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "definitionId",
+        "revision",
+        "role",
+        "instructions",
+        "inputs",
+        "outputs",
+        "tools",
+        "permissions",
+        "resourceLimits"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "major",
+            "minor"
+          ],
+          "properties": {
+            "major": {
+              "const": 1
+            },
+            "minor": {
+              "const": 0
+            }
+          }
+        },
+        "definitionId": {
+          "$ref": "#/$defs/agent/$defs/id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "role": {
+          "$ref": "#/$defs/agent/$defs/text"
+        },
+        "instructions": {
+          "$ref": "#/$defs/agent/$defs/text"
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/agent/$defs/port"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/agent/$defs/port"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/agent/$defs/id"
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/agent/$defs/permission"
+          }
+        },
+        "resourceLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxDurationSeconds",
+            "maxAttempts"
+          ],
+          "properties": {
+            "maxDurationSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            },
+            "maxAttempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        }
+      },
+      "$defs": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "not": {"pattern": "[\\r\\n]"}
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": "\\S"
+        },
+        "port": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "portId",
+            "type",
+            "required"
+          ],
+          "properties": {
+            "portId": {
+              "$ref": "#/$defs/agent/$defs/id"
+            },
+            "type": {
+              "enum": [
+                "text",
+                "json",
+                "artifactRef",
+                "control"
+              ]
+            },
+            "required": {
+              "type": "boolean"
+            }
+          }
+        },
+        "permission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "scope",
+            "approvalRequired"
+          ],
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/agent/$defs/id"
+            },
+            "scope": {
+              "$ref": "#/$defs/agent/$defs/text"
+            },
+            "approvalRequired": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}
