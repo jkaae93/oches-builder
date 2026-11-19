@@ -1,0 +1,8 @@
+# Design
+
+Follow `ARC-08.md`, `CROSS_MODULE_CONTRACTS.md` (C-06), `SQLITE_STORAGE_RECOVERY_CONTRACT.md`, and frozen E7–E9/T1/T3.
+
+1. `MemoryStore` stores canonical `MemoryEntryRecord` payloads under `arc08/memory/<memoryID>` in `operational_state` (`owner_module = 'ARC-08'`) and maintains derived `memory_search_index` and `memory_evidence_links` tables. Every memory requires non-empty `evidenceRefs`, excludes secret markers, sets a 90-day `expiresAt` (`7_776_000s`) upon `Verified` transition after live evidence/deletion verification, renders Markdown + YAML frontmatter, and rejects Dreaming in v1 (`dreamingUnsupportedV1`).
+2. `ContextBuilder.selectContext` enforces the 64 KiB budget (`65_536` bytes) and 5-second partial-result timeout boundary, reloads canonical records rather than trusting derived index state, verifies memory expiry/policyVersion/accessScope and each evidence ref's deletion/revocation/revision/digest status, records explicit `excludedItems` reasons, and stores `ContextSelectionRecord` (`transferExecuted: false`) with a canonical `transferPreviewDigest`.
+3. `ContextBuilder.revalidateAndAuthorizeTransfer` re-checks `storeGeneration` + `selectionRevision`, `policyVersion`, scopes, and live evidence integrity immediately before transfer, then atomically validates and consumes a single-use `EXTERNAL_TRANSFER` approval bound to `contextSelectionRevision` and `inputDigest` (`transferPreviewDigest`).
+4. `DeletionRequestLifecycle.executeDeletion` and `BackupAndRecoveryManager.restoreWorkspaceFromBackup` propagate deletions to `memory_search_index` and `memory_evidence_links`. `MemoryStore.rebuildDerivedIndex` reconstructs derived search records strictly from non-deleted canonical records whose evidence is also non-deleted (V-16).

@@ -184,6 +184,42 @@ public final class DeletionRequestLifecycle: @unchecked Sendable {
                     defer { sqlite3_finalize(delIdx) }
                     try store.bindText(delIdx, index: 1, value: targetID)
                     guard sqlite3_step(delIdx) == SQLITE_DONE else { throw StorageError.unavailable("delete index failed") }
+
+                    if try tableExists("memory_search_index") {
+                        let hasLinks = try tableExists("memory_evidence_links")
+                        let sql = hasLinks
+                            ? """
+                              DELETE FROM memory_search_index
+                              WHERE workspace_id = ? AND (target_id = ? OR memory_object_id = ? OR memory_object_id IN (
+                                  SELECT memory_object_id FROM memory_evidence_links WHERE workspace_id = ? AND evidence_object_id = ?
+                              ))
+                              """
+                            : "DELETE FROM memory_search_index WHERE workspace_id = ? AND (target_id = ? OR memory_object_id = ?)"
+                        let delMemIdx = try store.prepare(sql)
+                        defer { sqlite3_finalize(delMemIdx) }
+                        try store.bindText(delMemIdx, index: 1, value: store.workspaceID)
+                        try store.bindText(delMemIdx, index: 2, value: targetID)
+                        try store.bindText(delMemIdx, index: 3, value: targetID)
+                        if hasLinks {
+                            try store.bindText(delMemIdx, index: 4, value: store.workspaceID)
+                            try store.bindText(delMemIdx, index: 5, value: targetID)
+                        }
+                        guard sqlite3_step(delMemIdx) == SQLITE_DONE else {
+                            throw StorageError.unavailable("delete memory search index failed")
+                        }
+                    }
+                    if try tableExists("memory_evidence_links") {
+                        let delLinks = try store.prepare(
+                            "DELETE FROM memory_evidence_links WHERE workspace_id = ? AND (memory_object_id = ? OR evidence_object_id = ?)"
+                        )
+                        defer { sqlite3_finalize(delLinks) }
+                        try store.bindText(delLinks, index: 1, value: store.workspaceID)
+                        try store.bindText(delLinks, index: 2, value: targetID)
+                        try store.bindText(delLinks, index: 3, value: targetID)
+                        guard sqlite3_step(delLinks) == SQLITE_DONE else {
+                            throw StorageError.unavailable("delete memory evidence links failed")
+                        }
+                    }
                 }
 
                 let allDone = derivedIndexDeleteSucceeds && backupsDeleteSucceeds
@@ -239,6 +275,14 @@ public final class DeletionRequestLifecycle: @unchecked Sendable {
                 detail: store.columnText(stmt, index: 7)
             )
         }
+    }
+
+    private func tableExists(_ name: String) throws -> Bool {
+        let stmt = try store.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?")
+        defer { sqlite3_finalize(stmt) }
+        try store.bindText(stmt, index: 1, value: name)
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return false }
+        return sqlite3_column_int(stmt, 0) > 0
     }
 }
 
@@ -392,6 +436,37 @@ public final class BackupAndRecoveryManager: @unchecked Sendable {
                             defer { sqlite3_finalize(delIdx) }
                             try restoredStore.bindText(delIdx, index: 1, value: entry.intent.targetID)
                             _ = sqlite3_step(delIdx)
+                        }
+                        if try tableExists(restoredStore, name: "memory_search_index") {
+                            let hasLinks = try tableExists(restoredStore, name: "memory_evidence_links")
+                            let sql = hasLinks
+                                ? """
+                                  DELETE FROM memory_search_index
+                                  WHERE workspace_id = ? AND (target_id = ? OR memory_object_id = ? OR memory_object_id IN (
+                                      SELECT memory_object_id FROM memory_evidence_links WHERE workspace_id = ? AND evidence_object_id = ?
+                                  ))
+                                  """
+                                : "DELETE FROM memory_search_index WHERE workspace_id = ? AND (target_id = ? OR memory_object_id = ?)"
+                            let delMemIdx = try restoredStore.prepare(sql)
+                            defer { sqlite3_finalize(delMemIdx) }
+                            try restoredStore.bindText(delMemIdx, index: 1, value: manifest.workspaceID)
+                            try restoredStore.bindText(delMemIdx, index: 2, value: entry.intent.targetID)
+                            try restoredStore.bindText(delMemIdx, index: 3, value: entry.intent.targetID)
+                            if hasLinks {
+                                try restoredStore.bindText(delMemIdx, index: 4, value: manifest.workspaceID)
+                                try restoredStore.bindText(delMemIdx, index: 5, value: entry.intent.targetID)
+                            }
+                            _ = sqlite3_step(delMemIdx)
+                        }
+                        if try tableExists(restoredStore, name: "memory_evidence_links") {
+                            let delLinks = try restoredStore.prepare(
+                                "DELETE FROM memory_evidence_links WHERE workspace_id = ? AND (memory_object_id = ? OR evidence_object_id = ?)"
+                            )
+                            defer { sqlite3_finalize(delLinks) }
+                            try restoredStore.bindText(delLinks, index: 1, value: manifest.workspaceID)
+                            try restoredStore.bindText(delLinks, index: 2, value: entry.intent.targetID)
+                            try restoredStore.bindText(delLinks, index: 3, value: entry.intent.targetID)
+                            _ = sqlite3_step(delLinks)
                         }
                         if try tableExists(restoredStore, name: "deletion_requests") {
                             let markDel = try restoredStore.prepare(
