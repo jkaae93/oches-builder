@@ -1,0 +1,3 @@
+# Proposal
+
+Implement IMP-19 Chrome MV3 extension and Native Messaging Host bridge: strict `allowed_origins` & first-arg caller origin verification, W1/P7 256 KiB native-endian length framing, non-extractable WebCrypto + IndexedDB key storage (failing closed on `KEY_UNAVAILABLE`), untrusted Content Script boundary (`sender.origin` / `tab` / `documentId` checks, stale selection on navigation/change, zero direct Native Host/Core access), two-step collection vs transfer confirmation, Noise IK transport integration, and Service Worker restart recovery via read-only inspect/cursor polling without auto-starts or `sendNativeMessage` session misuse (V-14, V-21).

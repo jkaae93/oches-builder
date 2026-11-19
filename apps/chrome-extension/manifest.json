@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Oches Builder Companion",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "description": "Local companion extension forwarding user-selected web page excerpts to Oches Core over Native Messaging + Noise IK.",
+  "permissions": [
+    "nativeMessaging",
+    "sidePanel",
+    "activeTab",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "src/service_worker.mjs",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none';"
+  },
+  "action": {
+    "default_title": "Oches Builder"
+  }
+}

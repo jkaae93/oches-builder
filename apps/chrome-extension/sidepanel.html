@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Oches Builder Side Panel</title>
+  </head>
+  <body>
+    <main>
+      <h1>Oches Builder</h1>
+      <section aria-label="Client identity and trust status">
+        <p id="trust-badge">Trust: USER_ENROLLED_KEY (Chrome origin checked; standalone host unproven)</p>
+        <p id="connection-status">Disconnected</p>
+      </section>
+      <section aria-label="Staged page selection">
+        <p id="selection-origin">Origin: none</p>
+        <p id="selection-stale-status">State: idle</p>
+        <pre id="selection-preview"></pre>
+        <button id="confirm-transfer-btn" type="button" disabled>Confirm Selection Scope for Proposal</button>
+      </section>
+      <section aria-label="Execution notice">
+        <p id="approval-notice">Privileged execution still requires explicit approval in Oches Desktop.</p>
+      </section>
+    </main>
+    <script type="module" src="./src/sidepanel.mjs"></script>
+  </body>
+</html>

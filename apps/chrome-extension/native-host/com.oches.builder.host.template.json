@@ -1,0 +1,9 @@
+{
+  "name": "com.oches.builder.host",
+  "description": "Oches Builder Native Messaging Host (Local stdio bridge)",
+  "path": "/Applications/Oches.app/Contents/Helpers/oches-native-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+  ]
+}

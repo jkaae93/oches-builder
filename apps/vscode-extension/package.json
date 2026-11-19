@@ -1,0 +1,81 @@
+{
+  "name": "oches-builder",
+  "displayName": "Oches Builder",
+  "description": "Local-only VS Code extension connecting trusted local workspaces to Oches Core over Noise IK.",
+  "version": "0.1.0",
+  "publisher": "oches",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Restricted Mode allows read-only status display only; workspace analysis, apply, run, and external context transfer are disabled."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Oches Builder v1 supports local filesystem workspaces on the same host as Core only."
+    }
+  },
+  "activationEvents": [
+    "onView:ochesBuilderStatus",
+    "onCommand:oches.getStatus",
+    "onCommand:oches.analyzeWorkspace",
+    "onCommand:oches.applyPlan",
+    "onCommand:oches.startRun"
+  ],
+  "main": "./src/extension.mjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "oches.getStatus",
+        "title": "Oches: Inspect Workspace Status (Read-Only)"
+      },
+      {
+        "command": "oches.analyzeWorkspace",
+        "title": "Oches: Analyze Local Workspace",
+        "enablement": "workspaceTrusted && !remoteName"
+      },
+      {
+        "command": "oches.applyPlan",
+        "title": "Oches: Apply Agent Configuration Plan",
+        "enablement": "workspaceTrusted && !remoteName"
+      },
+      {
+        "command": "oches.startRun",
+        "title": "Oches: Propose/Start Run (Desktop Approval Required)",
+        "enablement": "workspaceTrusted && !remoteName"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "oches.analyzeWorkspace",
+          "when": "workspaceTrusted && !remoteName"
+        },
+        {
+          "command": "oches.applyPlan",
+          "when": "workspaceTrusted && !remoteName"
+        },
+        {
+          "command": "oches.startRun",
+          "when": "workspaceTrusted && !remoteName"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "ochesBuilderStatus",
+          "name": "Oches Builder"
+        }
+      ]
+    }
+  }
+}
